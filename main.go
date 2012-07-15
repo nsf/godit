@@ -454,6 +454,20 @@ func (v *view) maybe_move_view_n_lines(n int) {
 	}
 }
 
+func (v *view) move_cursor_end_of_file() {
+	v.loc.cursor_line = v.buf.last_line
+	v.loc.cursor_line_num = v.buf.lines_n
+	v.adjust_top_line()
+	v.move_cursor_end_of_line()
+}
+
+func (v *view) move_cursor_beginning_of_file() {
+	v.loc.cursor_line = v.buf.first_line
+	v.loc.cursor_line_num = 1
+	v.adjust_top_line()
+	v.move_cursor_beginning_of_line()
+}
+
 //----------------------------------------------------------------------------
 // line
 //----------------------------------------------------------------------------
@@ -531,6 +545,7 @@ type buffer struct {
 	first_line *line
 	last_line  *line
 	loc        view_location
+	lines_n    int
 }
 
 func new_buffer() *buffer {
@@ -562,7 +577,7 @@ func new_buffer_from_reader(r io.Reader) (*buffer, error) {
 		top_line_num:    1,
 		cursor_line_num: 1,
 	}
-
+	b.lines_n = 1
 	b.first_line = l
 	for {
 		l.data, err = br.ReadBytes('\n')
@@ -574,6 +589,7 @@ func new_buffer_from_reader(r io.Reader) (*buffer, error) {
 			l.data = l.data[:len(l.data)-1]
 		}
 
+		b.lines_n++
 		l.next = new(line)
 		l.prev = prevline
 		prevline = l
@@ -616,6 +632,17 @@ func print_lines(l *line) {
 		fmt.Printf("%3d (%p) (p: %10p, n: %10p, l: %2d, c: %2d):  %s\n",
 			i, l, l.prev, l.next, len(l.data), cap(l.data), string(l.data))
 		i++
+	}
+}
+
+func process_alt_ch(ch rune, v *view) {
+	switch ch {
+	case 'v':
+		v.move_view_n_lines(-v.uibuf.Height / 2)
+	case '<':
+		v.move_cursor_beginning_of_file()
+	case '>':
+		v.move_cursor_end_of_file()
 	}
 }
 
@@ -662,11 +689,8 @@ func main() {
 				v.maybe_move_view_n_lines(v.uibuf.Height / 2)
 			}
 
-			switch ev.Ch {
-			case 'v':
-				if ev.Mod&termbox.ModAlt != 0 {
-					v.move_view_n_lines(-v.uibuf.Height / 2)
-				}
+			if ev.Mod&termbox.ModAlt != 0 {
+				process_alt_ch(ev.Ch, v)
 			}
 
 			termbox.SetCursor(v.cursor_position())
