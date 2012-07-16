@@ -90,6 +90,12 @@ func (v *view) detach() {
 	}
 }
 
+func (v *view) resize(w, h int) {
+	v.uibuf.Resize(w, h)
+	v.adjust_line_voffset()
+	v.adjust_top_line()
+}
+
 // This function is similar to what happens inside 'redraw', but it contains
 // a certain amount of specific code related to 'loc.line_voffset'.
 func (v *view) draw_cursor_line(line *line, coff int) {
@@ -692,6 +698,13 @@ func main() {
 				process_alt_ch(ev.Ch, v)
 			}
 
+			termbox.SetCursor(v.cursor_position())
+			v.redraw()
+			copy(termbox.CellBuffer(), v.uibuf.Cells)
+			termbox.Flush()
+		case termbox.EventResize:
+			termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
+			v.resize(ev.Width, ev.Height)
 			termbox.SetCursor(v.cursor_position())
 			v.redraw()
 			copy(termbox.CellBuffer(), v.uibuf.Cells)
