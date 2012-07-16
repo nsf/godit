@@ -252,6 +252,14 @@ func (v *view) adjust_cursor_line() {
 	if cursor.prev != nil && co >= h-view_vertical_threshold {
 		v.move_cursor_line_n_times((h - view_vertical_threshold) - co - 1)
 	}
+
+	cursor = v.loc.cursor_line
+	bo, co, vo := cursor.find_closest_offsets(v.loc.last_cursor_voffset)
+	v.loc.cursor_boffset = bo
+	v.loc.cursor_coffset = co
+	v.loc.cursor_voffset = vo
+	v.loc.line_voffset = 0
+	v.adjust_line_voffset()
 }
 
 // When 'cursor_line' was changed, call this function to possibly adjust the
@@ -301,130 +309,137 @@ func (v *view) cursor_position() (int, int) {
 	return x, y
 }
 
-func (v *view) move_cursor_forward() {
-	line := v.loc.cursor_line
-	if v.loc.cursor_boffset >= len(line.data) {
-		// move to the beginning of the next line if possible
-		if line.next != nil {
-			v.loc.cursor_line = line.next
-			v.loc.cursor_boffset = 0
-			v.loc.cursor_coffset = 0
-			v.loc.cursor_voffset = 0
-			v.loc.last_cursor_voffset = 0
-			v.loc.cursor_line_num++
-			v.loc.line_voffset = 0
-			v.adjust_top_line()
-		}
+// Move cursor to the 'boffset' position in the 'line'. Obviously 'line' must be
+// from the attached buffer. If 'boffset' < 0, use 'last_cursor_voffset'.
+func (v *view) move_cursor_to(line *line, line_num int, boffset int) {
+	curline := v.loc.cursor_line
+	if line != curline {
+		goto otherline
+	}
+
+	// quick path 1: same line, boffset == v.loc.cursor_boffset
+	if boffset == v.loc.cursor_boffset || boffset < 0 {
 		return
 	}
 
-	r, rlen := utf8.DecodeRune(line.data[v.loc.cursor_boffset:])
-	v.loc.cursor_boffset += rlen
-	v.loc.cursor_coffset += 1
-	if r == '\t' {
-		next_tabstop := tabstop_length -
-			v.loc.cursor_voffset%tabstop_length
-		v.loc.cursor_voffset += next_tabstop
-	} else {
-		v.loc.cursor_voffset += 1
+	// quick path 2: same line, boffset > v.loc.cursor_boffset
+	if boffset > v.loc.cursor_boffset {
+		// move one character forward at a time
+		for boffset != v.loc.cursor_boffset {
+			r, rlen := utf8.DecodeRune(curline.data[v.loc.cursor_boffset:])
+			v.loc.cursor_boffset += rlen
+			v.loc.cursor_coffset += 1
+			if r == '\t' {
+				v.loc.cursor_voffset += tabstop_length -
+					v.loc.cursor_voffset%tabstop_length
+			} else {
+				v.loc.cursor_voffset += 1
+			}
+		}
+		v.loc.last_cursor_voffset = v.loc.cursor_voffset
+		v.adjust_line_voffset()
+		return
 	}
-	v.loc.last_cursor_voffset = v.loc.cursor_voffset
+
+	// quick path 3: same line, boffset == 0
+	if boffset == 0 {
+		v.loc.cursor_boffset = 0
+		v.loc.cursor_coffset = 0
+		v.loc.cursor_voffset = 0
+		v.loc.last_cursor_voffset = v.loc.cursor_voffset
+		v.adjust_line_voffset()
+		return
+	}
+
+	// quick path 3: same line, boffset < v.loc.cursor_boffset
+	if boffset < v.loc.cursor_boffset {
+		// move one character back at a time, and if one or more tabs
+		// were met, recalculate 'cursor_voffset'
+		for boffset != v.loc.cursor_boffset {
+			r, rlen := utf8.DecodeLastRune(curline.data[:v.loc.cursor_boffset])
+			v.loc.cursor_boffset -= rlen
+			v.loc.cursor_coffset -= 1
+			if r == '\t' {
+				// mark 'cursor_voffset' for recalculation
+				v.loc.cursor_voffset = -1
+			} else {
+				v.loc.cursor_voffset -= 1
+			}
+		}
+		if v.loc.cursor_voffset < 0 {
+			v.loc.cursor_voffset = curline.voffset(boffset)
+		}
+		v.loc.last_cursor_voffset = v.loc.cursor_voffset
+		v.adjust_line_voffset()
+		return
+	}
+
+otherline:
+	v.loc.cursor_line = line
+	v.loc.cursor_line_num = line_num
+	if boffset < 0 {
+		bo, co, vo := line.find_closest_offsets(v.loc.last_cursor_voffset)
+		v.loc.cursor_boffset = bo
+		v.loc.cursor_coffset = co
+		v.loc.cursor_voffset = vo
+	} else {
+		voffset, coffset := v.loc.cursor_line.voffset_coffset(boffset)
+		v.loc.cursor_boffset = boffset
+		v.loc.cursor_coffset = coffset
+		v.loc.cursor_voffset = voffset
+		v.loc.last_cursor_voffset = v.loc.cursor_voffset
+	}
+	v.loc.line_voffset = 0
 	v.adjust_line_voffset()
+	v.adjust_top_line()
+}
+
+func (v *view) move_cursor_forward() {
+	line := v.loc.cursor_line
+	_, rlen := utf8.DecodeRune(line.data[v.loc.cursor_boffset:])
+	v.move_cursor_to(line, v.loc.cursor_line_num, v.loc.cursor_boffset+rlen)
 }
 
 func (v *view) move_cursor_backward() {
 	line := v.loc.cursor_line
-	if v.loc.cursor_boffset == 0 {
-		// move to the end of the next line if possible
-		if line.prev != nil {
-			cl, vl := line.prev.lengths()
-			v.loc.cursor_line = line.prev
-			v.loc.cursor_boffset = len(line.prev.data)
-			v.loc.cursor_coffset = cl
-			v.loc.cursor_voffset = vl
-			v.loc.last_cursor_voffset = v.loc.cursor_voffset
-			v.loc.cursor_line_num--
-			v.loc.line_voffset = 0
-			v.adjust_line_voffset()
-			v.adjust_top_line()
-		}
-		return
-	}
-
-	r, rlen := utf8.DecodeLastRune(line.data[:v.loc.cursor_boffset])
-	v.loc.cursor_boffset -= rlen
-	v.loc.cursor_coffset -= 1
-	if r == '\t' {
-		// that's fucked up a bit, but we can't really stride tabstops
-		// backwards
-		v.loc.cursor_voffset = line.voffset(v.loc.cursor_boffset)
-	} else {
-		v.loc.cursor_voffset -= 1
-	}
-	v.loc.last_cursor_voffset = v.loc.cursor_voffset
-	v.adjust_line_voffset()
+	_, rlen := utf8.DecodeLastRune(line.data[:v.loc.cursor_boffset])
+	v.move_cursor_to(line, v.loc.cursor_line_num, v.loc.cursor_boffset-rlen)
 }
 
 func (v *view) move_cursor_next_line() {
 	line := v.loc.cursor_line
 	if line.next != nil {
-		bo, co, vo := line.next.find_closest_offsets(v.loc.last_cursor_voffset)
-		v.loc.cursor_line = line.next
-		v.loc.cursor_boffset = bo
-		v.loc.cursor_coffset = co
-		v.loc.cursor_voffset = vo
-		v.loc.cursor_line_num++
-		v.loc.line_voffset = 0
-		v.adjust_line_voffset()
-		v.adjust_top_line()
+		v.move_cursor_to(line.next, v.loc.cursor_line_num+1, -1)
 	}
 }
 
 func (v *view) move_cursor_prev_line() {
 	line := v.loc.cursor_line
 	if line.prev != nil {
-		bo, co, vo := line.prev.find_closest_offsets(v.loc.last_cursor_voffset)
-		v.loc.cursor_line = line.prev
-		v.loc.cursor_boffset = bo
-		v.loc.cursor_coffset = co
-		v.loc.cursor_voffset = vo
-		v.loc.cursor_line_num--
-		v.loc.line_voffset = 0
-		v.adjust_line_voffset()
-		v.adjust_top_line()
+		v.move_cursor_to(line.prev, v.loc.cursor_line_num-1, -1)
 	}
 }
 
 func (v *view) move_cursor_beginning_of_line() {
-	v.loc.cursor_boffset = 0
-	v.loc.cursor_coffset = 0
-	v.loc.cursor_voffset = 0
-	v.loc.last_cursor_voffset = 0
-	v.loc.line_voffset = 0
+	v.move_cursor_to(v.loc.cursor_line, v.loc.cursor_line_num, 0)
 }
 
 func (v *view) move_cursor_end_of_line() {
 	line := v.loc.cursor_line
-	cl, vl := line.lengths()
-	v.loc.cursor_boffset = len(line.data)
-	v.loc.cursor_coffset = cl
-	v.loc.cursor_voffset = vl
-	v.loc.last_cursor_voffset = vl
-	v.loc.line_voffset = 0
-	v.adjust_line_voffset()
+	v.move_cursor_to(line, v.loc.cursor_line_num, len(line.data))
+}
+
+func (v *view) move_cursor_beginning_of_file() {
+	v.move_cursor_to(v.buf.first_line, 1, 0)
+}
+
+func (v *view) move_cursor_end_of_file() {
+	v.move_cursor_to(v.buf.last_line, v.buf.lines_n, len(v.buf.last_line.data))
 }
 
 func (v *view) move_view_n_lines(n int) {
 	v.move_top_line_n_times(n)
 	v.adjust_cursor_line()
-
-	line := v.loc.cursor_line
-	bo, co, vo := line.find_closest_offsets(v.loc.last_cursor_voffset)
-	v.loc.cursor_boffset = bo
-	v.loc.cursor_coffset = co
-	v.loc.cursor_voffset = vo
-	v.loc.line_voffset = 0
-	v.adjust_line_voffset()
 }
 
 func (v *view) can_move_top_line_n_times(n int) bool {
@@ -454,20 +469,6 @@ func (v *view) maybe_move_view_n_lines(n int) {
 	}
 }
 
-func (v *view) move_cursor_end_of_file() {
-	v.loc.cursor_line = v.buf.last_line
-	v.loc.cursor_line_num = v.buf.lines_n
-	v.adjust_top_line()
-	v.move_cursor_end_of_line()
-}
-
-func (v *view) move_cursor_beginning_of_file() {
-	v.loc.cursor_line = v.buf.first_line
-	v.loc.cursor_line_num = 1
-	v.adjust_top_line()
-	v.move_cursor_beginning_of_line()
-}
-
 //----------------------------------------------------------------------------
 // line
 //----------------------------------------------------------------------------
@@ -484,6 +485,22 @@ func (l *line) voffset(boffset int) (vo int) {
 	for len(data) > 0 {
 		r, rlen := utf8.DecodeRune(data)
 		data = data[rlen:]
+		if r == '\t' {
+			vo += tabstop_length - vo%tabstop_length
+		} else {
+			vo += 1
+		}
+	}
+	return
+}
+
+// Find a visual and a character offset for a given byte offset
+func (l *line) voffset_coffset(boffset int) (vo, co int) {
+	data := l.data[:boffset]
+	for len(data) > 0 {
+		r, rlen := utf8.DecodeRune(data)
+		data = data[rlen:]
+		co += 1
 		if r == '\t' {
 			vo += tabstop_length - vo%tabstop_length
 		} else {
@@ -514,24 +531,6 @@ func (l *line) find_closest_offsets(voffset int) (bo, co, vo int) {
 		bo += rlen
 		co += 1
 		vo += vodif
-	}
-	return
-}
-
-// Returns character and visual lengths of the 'line.data', the byte length can
-// be found using 'len(l.data)' formula.
-func (l *line) lengths() (cl, vl int) {
-	data := l.data
-	for len(data) > 0 {
-		r, rlen := utf8.DecodeRune(data)
-		data = data[rlen:]
-
-		cl++
-		if r == '\t' {
-			vl += tabstop_length - vl%tabstop_length
-		} else {
-			vl += 1
-		}
 	}
 	return
 }
