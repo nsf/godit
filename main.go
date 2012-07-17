@@ -657,8 +657,8 @@ type action struct {
 	what     action_type
 	data     []byte
 	offset   int
-	line     *line
 	line_num int
+	line     *line
 	pline    *line
 }
 
@@ -680,7 +680,7 @@ func (a *action) do(v *view, what action_type) {
 		copy(d[a.offset+len(a.data):], d[a.offset:])
 		copy(d[a.offset:], a.data)
 		a.line.data = d
-		v.move_cursor_to(a.line, a.line_num, a.offset + len(a.data))
+		v.move_cursor_to(a.line, a.line_num, a.offset+len(a.data))
 	case action_delete:
 		d := a.line.data
 		copy(d[a.offset:], d[a.offset+len(a.data):])
@@ -877,6 +877,8 @@ func main() {
 				v.buf.undo.maybe_finalize_action_group()
 			case termbox.KeyCtrlSlash:
 				v.buf.undo.undo(v)
+			case termbox.KeySpace:
+				v.insert_rune(' ')
 			}
 
 			if ev.Mod&termbox.ModAlt != 0 {
