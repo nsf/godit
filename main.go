@@ -475,6 +475,12 @@ func (v *view) maybe_move_view_n_lines(n int) {
 	}
 }
 
+func (v *view) insert_rune(r rune) {
+	var data [utf8.UTFMax]byte
+	len := utf8.EncodeRune(data[:], r)
+	v.buf.undo.insert(v, data[:len])
+}
+
 //----------------------------------------------------------------------------
 // line
 //----------------------------------------------------------------------------
@@ -551,6 +557,7 @@ type buffer struct {
 	last_line  *line
 	loc        view_location
 	lines_n    int
+	undo       undo
 }
 
 func new_buffer() *buffer {
@@ -566,6 +573,7 @@ func new_buffer() *buffer {
 		top_line_num:    1,
 		cursor_line_num: 1,
 	}
+	b.undo.init()
 	return b
 }
 
@@ -582,6 +590,7 @@ func new_buffer_from_reader(r io.Reader) (*buffer, error) {
 		top_line_num:    1,
 		cursor_line_num: 1,
 	}
+	b.undo.init()
 	b.lines_n = 1
 	b.first_line = l
 	for {
@@ -631,6 +640,170 @@ func (b *buffer) delete_view(v *view) {
 	}
 }
 
+//----------------------------------------------------------------------------
+// undo
+//----------------------------------------------------------------------------
+
+type action_type int
+
+const (
+	action_insert      action_type = 1
+	action_insert_line action_type = 2
+	action_delete      action_type = -1
+	action_delete_line action_type = -2
+)
+
+type action struct {
+	what     action_type
+	data     []byte
+	offset   int
+	line     *line
+	line_num int
+	pline    *line
+}
+
+func (a *action) apply(v *view) {
+	a.do(v, a.what)
+}
+
+func (a *action) revert(v *view) {
+	a.do(v, -a.what)
+}
+
+func (a *action) do(v *view, what action_type) {
+	switch what {
+	case action_insert:
+		d := a.line.data
+		nl := len(d) + len(a.data)
+		d = grow_byte_slice(d, nl)
+		d = d[:nl]
+		copy(d[a.offset+len(a.data):], d[a.offset:])
+		copy(d[a.offset:], a.data)
+		a.line.data = d
+		v.move_cursor_to(a.line, a.line_num, a.offset + len(a.data))
+	case action_delete:
+		d := a.line.data
+		copy(d[a.offset:], d[a.offset+len(a.data):])
+		d = d[:len(d)-len(a.data)]
+		a.line.data = d
+		v.move_cursor_to(a.line, a.line_num, a.offset)
+	}
+}
+
+type action_group struct {
+	actions []action
+	next    *action_group
+	prev    *action_group
+}
+
+type undo struct {
+	cur *action_group
+}
+
+func (u *undo) init() {
+	sentinel := new(action_group)
+	first := new(action_group)
+	sentinel.next = first
+	first.prev = sentinel
+	u.cur = sentinel
+
+	// the trick here is that I set 'sentinel' as 'u.cur', it is required to
+	// maintain an invariant, where 'u.cur' is a sentinel or is not empty
+}
+
+func (u *undo) finalize_action_group() {
+	// if there are no actions and we're not at the sentinel, it means we're
+	// on the tip, don't move further
+	if len(u.cur.actions) == 0 && u.cur.prev != nil {
+		return
+	}
+
+	prev := u.cur
+	u.cur = u.cur.next
+	u.cur.prev = prev
+	u.cur.next = nil
+	u.cur.actions = nil
+}
+
+func (u *undo) maybe_finalize_action_group() {
+	// finalize only if we're at the tip of the undo history, this function
+	// will be called mainly after each cursor movement and actions alike
+	// (that are supposed to finalize action group)
+	if u.cur.next != nil {
+		return
+	}
+	u.cur.next = new(action_group)
+}
+
+func (u *undo) undo(v *view) {
+	if u.cur.prev == nil {
+		// we're at the sentinel, no more things to undo
+		return
+	}
+
+	// undo invariant tells us 'len(u.cur.actions) != 0' in case if this is
+	// not a sentinel, revert the actions in the current action group
+	for i := len(u.cur.actions) - 1; i >= 0; i-- {
+		a := &u.cur.actions[i]
+		a.revert(v)
+	}
+	u.cur = u.cur.prev
+}
+
+func (u *undo) redo(v *view) {
+	if u.cur.next == nil {
+		// at the tip, nothing to redo
+		return
+	}
+
+	u.cur = u.cur.next
+	for i := range u.cur.actions {
+		a := &u.cur.actions[i]
+		a.apply(v)
+	}
+}
+
+func (u *undo) insert(v *view, data []byte) {
+	if u.cur.next != nil {
+		u.finalize_action_group()
+	}
+	a := action{
+		what:     action_insert,
+		data:     data,
+		offset:   v.loc.cursor_boffset,
+		line:     v.loc.cursor_line,
+		line_num: v.loc.cursor_line_num,
+	}
+	a.apply(v)
+	u.cur.actions = append(u.cur.actions, a)
+}
+
+func (u *undo) delete(v *view, nbytes int) {
+	if u.cur.next != nil {
+		u.finalize_action_group()
+	}
+	bo := v.loc.cursor_boffset
+	d := v.loc.cursor_line.data
+	a := action{
+		what:     action_delete,
+		data:     d[bo : bo+nbytes],
+		offset:   bo,
+		line:     v.loc.cursor_line,
+		line_num: v.loc.cursor_line_num,
+	}
+	a.apply(v)
+	u.cur.actions = append(u.cur.actions, a)
+}
+
+func grow_byte_slice(s []byte, desired_cap int) []byte {
+	if cap(s) < desired_cap {
+		ns := make([]byte, len(s), desired_cap)
+		copy(ns, s)
+		return ns
+	}
+	return s
+}
+
 func print_lines(l *line) {
 	i := 1
 	for ; l != nil; l = l.next {
@@ -644,10 +817,13 @@ func process_alt_ch(ch rune, v *view) {
 	switch ch {
 	case 'v':
 		v.move_view_n_lines(-v.uibuf.Height / 2)
+		v.buf.undo.maybe_finalize_action_group()
 	case '<':
 		v.move_cursor_beginning_of_file()
+		v.buf.undo.maybe_finalize_action_group()
 	case '>':
 		v.move_cursor_end_of_file()
+		v.buf.undo.maybe_finalize_action_group()
 	}
 }
 
@@ -680,22 +856,33 @@ func main() {
 				return
 			case termbox.KeyCtrlF:
 				v.move_cursor_forward()
+				v.buf.undo.maybe_finalize_action_group()
 			case termbox.KeyCtrlB:
 				v.move_cursor_backward()
+				v.buf.undo.maybe_finalize_action_group()
 			case termbox.KeyCtrlN:
 				v.move_cursor_next_line()
+				v.buf.undo.maybe_finalize_action_group()
 			case termbox.KeyCtrlP:
 				v.move_cursor_prev_line()
+				v.buf.undo.maybe_finalize_action_group()
 			case termbox.KeyCtrlE:
 				v.move_cursor_end_of_line()
+				v.buf.undo.maybe_finalize_action_group()
 			case termbox.KeyCtrlA:
 				v.move_cursor_beginning_of_line()
+				v.buf.undo.maybe_finalize_action_group()
 			case termbox.KeyCtrlV:
 				v.maybe_move_view_n_lines(v.uibuf.Height / 2)
+				v.buf.undo.maybe_finalize_action_group()
+			case termbox.KeyCtrlSlash:
+				v.buf.undo.undo(v)
 			}
 
 			if ev.Mod&termbox.ModAlt != 0 {
 				process_alt_ch(ev.Ch, v)
+			} else if ev.Ch != 0 {
+				v.insert_rune(ev.Ch)
 			}
 
 			termbox.SetCursor(v.cursor_position())
