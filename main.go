@@ -984,6 +984,10 @@ func process_alt_ch(ch rune, v *view) {
 }
 
 func main() {
+	if len(os.Args) != 2 {
+		println("usage: godit <file>")
+		return
+	}
 	f, _ := os.Open(os.Args[1])
 	defer f.Close()
 	b, _ := new_buffer_from_reader(f)
