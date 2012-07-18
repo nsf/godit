@@ -479,7 +479,7 @@ func (v *view) insert_rune(r rune) {
 	len := utf8.EncodeRune(data[:], r)
 	v.buf.undo.insert(v, v.loc.cursor_line, v.loc.cursor_boffset, data[:len])
 	v.move_cursor_to(v.loc.cursor_line, v.loc.cursor_line_num,
-		v.loc.cursor_boffset + len)
+		v.loc.cursor_boffset+len)
 }
 
 // works like pressing enter
@@ -487,14 +487,14 @@ func (v *view) new_line() {
 	bo := v.loc.cursor_boffset
 	line := v.loc.cursor_line
 	if bo < len(line.data) {
-		data := line.data[bo:]
+		data := copy_byte_slice(line.data, bo, len(line.data))
 		v.buf.undo.delete(v, line, bo, len(data))
 		nl := v.buf.undo.insert_line(v, line)
 		v.buf.undo.insert(v, nl, 0, data)
-		v.move_cursor_to(nl, v.loc.cursor_line_num + 1, 0)
+		v.move_cursor_to(nl, v.loc.cursor_line_num+1, 0)
 	} else {
 		nl := v.buf.undo.insert_line(v, line)
-		v.move_cursor_to(nl, v.loc.cursor_line_num + 1, 0)
+		v.move_cursor_to(nl, v.loc.cursor_line_num+1, 0)
 	}
 	v.buf.undo.finalize_action_group(v)
 }
@@ -507,10 +507,10 @@ func (v *view) backspace() {
 			// beginning of the file
 			return
 		}
-		// move the contents of a current line to a previous line
+		// move the contents of the current line to the previous line
 		var data []byte
 		if len(line.data) > 0 {
-			data = line.data
+			data = copy_byte_slice(line.data, 0, len(line.data))
 			v.buf.undo.delete(v, line, 0, len(line.data))
 		}
 		v.buf.undo.delete_line(v, line)
@@ -518,8 +518,8 @@ func (v *view) backspace() {
 			v.buf.undo.insert(v, line.prev,
 				len(line.prev.data), data)
 		}
-		v.move_cursor_to(line.prev, v.loc.cursor_line_num - 1,
-			len(line.prev.data) - len(line.data))
+		v.move_cursor_to(line.prev, v.loc.cursor_line_num-1,
+			len(line.prev.data)-len(data))
 		v.buf.undo.finalize_action_group(v)
 		return
 	}
@@ -530,7 +530,34 @@ func (v *view) backspace() {
 	v.buf.undo.finalize_action_group(v)
 }
 
-func (v *view) delete() {}
+func (v *view) delete() {
+	bo := v.loc.cursor_boffset
+	line := v.loc.cursor_line
+	if bo == len(line.data) {
+		if line.next == nil {
+			// end of the file
+			return
+		}
+		// move contents of the next line to the current line
+		var data []byte
+		if len(line.next.data) > 0 {
+			data = copy_byte_slice(line.next.data, 0,
+				len(line.next.data))
+			v.buf.undo.delete(v, line.next, 0,
+				len(line.next.data))
+		}
+		v.buf.undo.delete_line(v, line.next)
+		if data != nil {
+			v.buf.undo.insert(v, line, len(line.data), data)
+		}
+		v.buf.undo.finalize_action_group(v)
+		return
+	}
+
+	_, rlen := utf8.DecodeRune(line.data[bo:])
+	v.buf.undo.delete(v, line, bo, rlen)
+	v.buf.undo.finalize_action_group(v)
+}
 
 //----------------------------------------------------------------------------
 // line
@@ -749,8 +776,10 @@ func (a *action) do(v *view, what action_type) {
 			n := p.next
 			p.next = a.line
 			a.line.prev = p
-			n.prev = a.line
-			a.line.next = n
+			if n != nil {
+				a.line.next = n
+				n.prev = a.line
+			}
 		}
 	case action_delete_line:
 		p := a.line.prev
@@ -862,50 +891,55 @@ func (u *undo) redo(v *view) {
 		u.cur.after_cursor_boffset)
 }
 
+func (u *undo) append(a *action) {
+	// TODO: merge
+	u.cur.actions = append(u.cur.actions, *a)
+}
+
 func (u *undo) insert(v *view, line *line, offset int, data []byte) {
 	u.maybe_next_action_group(v)
 	a := action{
-		what:     action_insert,
-		data:     data,
-		offset:   offset,
-		line:     line,
+		what:   action_insert,
+		data:   data,
+		offset: offset,
+		line:   line,
 	}
 	a.apply(v)
-	u.cur.actions = append(u.cur.actions, a)
+	u.append(&a)
 }
 
 func (u *undo) delete(v *view, line *line, offset int, nbytes int) {
 	u.maybe_next_action_group(v)
-	d := line.data
+	d := copy_byte_slice(line.data, offset, offset+nbytes)
 	a := action{
-		what:     action_delete,
-		data:     d[offset : offset+nbytes],
-		offset:   offset,
-		line:     line,
+		what:   action_delete,
+		data:   d,
+		offset: offset,
+		line:   line,
 	}
 	a.apply(v)
-	u.cur.actions = append(u.cur.actions, a)
+	u.append(&a)
 }
 
 func (u *undo) insert_line(v *view, after *line) *line {
 	u.maybe_next_action_group(v)
 	a := action{
-		what:     action_insert_line,
-		line:     &line{prev: after},
+		what: action_insert_line,
+		line: &line{prev: after},
 	}
 	a.apply(v)
-	u.cur.actions = append(u.cur.actions, a)
+	u.append(&a)
 	return a.line
 }
 
 func (u *undo) delete_line(v *view, line *line) {
 	u.maybe_next_action_group(v)
 	a := action{
-		what:     action_delete_line,
-		line:     line,
+		what: action_delete_line,
+		line: line,
 	}
 	a.apply(v)
-	u.cur.actions = append(u.cur.actions, a)
+	u.append(&a)
 }
 
 func grow_byte_slice(s []byte, desired_cap int) []byte {
@@ -915,6 +949,12 @@ func grow_byte_slice(s []byte, desired_cap int) []byte {
 		return ns
 	}
 	return s
+}
+
+func copy_byte_slice(s []byte, b, e int) []byte {
+	c := make([]byte, e-b)
+	copy(c, s[b:e])
+	return c
 }
 
 func process_alt_ch(ch rune, v *view) {
