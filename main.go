@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"github.com/nsf/termbox-go"
 	"github.com/nsf/tulib"
 	"io"
@@ -478,8 +477,60 @@ func (v *view) maybe_move_view_n_lines(n int) {
 func (v *view) insert_rune(r rune) {
 	var data [utf8.UTFMax]byte
 	len := utf8.EncodeRune(data[:], r)
-	v.buf.undo.insert(v, data[:len])
+	v.buf.undo.insert(v, v.loc.cursor_line, v.loc.cursor_boffset, data[:len])
+	v.move_cursor_to(v.loc.cursor_line, v.loc.cursor_line_num,
+		v.loc.cursor_boffset + len)
 }
+
+// works like pressing enter
+func (v *view) new_line() {
+	bo := v.loc.cursor_boffset
+	line := v.loc.cursor_line
+	if bo < len(line.data) {
+		data := line.data[bo:]
+		v.buf.undo.delete(v, line, bo, len(data))
+		nl := v.buf.undo.insert_line(v, line)
+		v.buf.undo.insert(v, nl, 0, data)
+		v.move_cursor_to(nl, v.loc.cursor_line_num + 1, 0)
+	} else {
+		nl := v.buf.undo.insert_line(v, line)
+		v.move_cursor_to(nl, v.loc.cursor_line_num + 1, 0)
+	}
+	v.buf.undo.finalize_action_group(v)
+}
+
+func (v *view) backspace() {
+	bo := v.loc.cursor_boffset
+	line := v.loc.cursor_line
+	if bo == 0 {
+		if line.prev == nil {
+			// beginning of the file
+			return
+		}
+		// move the contents of a current line to a previous line
+		var data []byte
+		if len(line.data) > 0 {
+			data = line.data
+			v.buf.undo.delete(v, line, 0, len(line.data))
+		}
+		v.buf.undo.delete_line(v, line)
+		if data != nil {
+			v.buf.undo.insert(v, line.prev,
+				len(line.prev.data), data)
+		}
+		v.move_cursor_to(line.prev, v.loc.cursor_line_num - 1,
+			len(line.prev.data) - len(line.data))
+		v.buf.undo.finalize_action_group(v)
+		return
+	}
+
+	_, rlen := utf8.DecodeLastRune(line.data[:bo])
+	v.buf.undo.delete(v, line, bo-rlen, rlen)
+	v.move_cursor_to(line, v.loc.cursor_line_num, bo-rlen)
+	v.buf.undo.finalize_action_group(v)
+}
+
+func (v *view) delete() {}
 
 //----------------------------------------------------------------------------
 // line
@@ -654,12 +705,10 @@ const (
 )
 
 type action struct {
-	what     action_type
-	data     []byte
-	offset   int
-	line_num int
-	line     *line
-	pline    *line
+	what   action_type
+	data   []byte
+	offset int
+	line   *line
 }
 
 func (a *action) apply(v *view) {
@@ -680,20 +729,56 @@ func (a *action) do(v *view, what action_type) {
 		copy(d[a.offset+len(a.data):], d[a.offset:])
 		copy(d[a.offset:], a.data)
 		a.line.data = d
-		v.move_cursor_to(a.line, a.line_num, a.offset+len(a.data))
+		// TODO: invalidate cursor from all the views of the buffer
+		// except 'v'
 	case action_delete:
 		d := a.line.data
 		copy(d[a.offset:], d[a.offset+len(a.data):])
 		d = d[:len(d)-len(a.data)]
 		a.line.data = d
-		v.move_cursor_to(a.line, a.line_num, a.offset)
+		// TODO: invalidate cursor from all the views of the buffer
+		// except 'v'
+	case action_insert_line:
+		p := a.line.prev
+		if p == nil {
+			n := v.buf.first_line
+			v.buf.first_line = a.line
+			a.line.prev = nil
+			a.line.next = n
+		} else {
+			n := p.next
+			p.next = a.line
+			a.line.prev = p
+			n.prev = a.line
+			a.line.next = n
+		}
+	case action_delete_line:
+		p := a.line.prev
+		n := a.line.next
+		if p == nil && n == nil {
+			// impossible to remove the last line
+			break
+		}
+
+		if n != nil {
+			n.prev = p
+		}
+		if p != nil {
+			p.next = n
+		}
 	}
 }
 
 type action_group struct {
-	actions []action
-	next    *action_group
-	prev    *action_group
+	actions                []action
+	next                   *action_group
+	prev                   *action_group
+	before_cursor_line     *line
+	before_cursor_line_num int
+	before_cursor_boffset  int
+	after_cursor_line      *line
+	after_cursor_line_num  int
+	after_cursor_boffset   int
 }
 
 type undo struct {
@@ -711,10 +796,15 @@ func (u *undo) init() {
 	// maintain an invariant, where 'u.cur' is a sentinel or is not empty
 }
 
-func (u *undo) finalize_action_group() {
+func (u *undo) maybe_next_action_group(v *view) {
 	// if there are no actions and we're not at the sentinel, it means we're
 	// on the tip, don't move further
 	if len(u.cur.actions) == 0 && u.cur.prev != nil {
+		return
+	}
+
+	// no need to move
+	if u.cur.next == nil {
 		return
 	}
 
@@ -723,16 +813,21 @@ func (u *undo) finalize_action_group() {
 	u.cur.prev = prev
 	u.cur.next = nil
 	u.cur.actions = nil
+	u.cur.before_cursor_line = v.loc.cursor_line
+	u.cur.before_cursor_line_num = v.loc.cursor_line_num
+	u.cur.before_cursor_boffset = v.loc.cursor_boffset
 }
 
-func (u *undo) maybe_finalize_action_group() {
+func (u *undo) finalize_action_group(v *view) {
 	// finalize only if we're at the tip of the undo history, this function
 	// will be called mainly after each cursor movement and actions alike
 	// (that are supposed to finalize action group)
-	if u.cur.next != nil {
-		return
+	if u.cur.next == nil {
+		u.cur.next = new(action_group)
+		u.cur.after_cursor_line = v.loc.cursor_line
+		u.cur.after_cursor_line_num = v.loc.cursor_line_num
+		u.cur.after_cursor_boffset = v.loc.cursor_boffset
 	}
-	u.cur.next = new(action_group)
 }
 
 func (u *undo) undo(v *view) {
@@ -747,6 +842,8 @@ func (u *undo) undo(v *view) {
 		a := &u.cur.actions[i]
 		a.revert(v)
 	}
+	v.move_cursor_to(u.cur.before_cursor_line, u.cur.before_cursor_line_num,
+		u.cur.before_cursor_boffset)
 	u.cur = u.cur.prev
 }
 
@@ -761,35 +858,51 @@ func (u *undo) redo(v *view) {
 		a := &u.cur.actions[i]
 		a.apply(v)
 	}
+	v.move_cursor_to(u.cur.after_cursor_line, u.cur.after_cursor_line_num,
+		u.cur.after_cursor_boffset)
 }
 
-func (u *undo) insert(v *view, data []byte) {
-	if u.cur.next != nil {
-		u.finalize_action_group()
-	}
+func (u *undo) insert(v *view, line *line, offset int, data []byte) {
+	u.maybe_next_action_group(v)
 	a := action{
 		what:     action_insert,
 		data:     data,
-		offset:   v.loc.cursor_boffset,
-		line:     v.loc.cursor_line,
-		line_num: v.loc.cursor_line_num,
+		offset:   offset,
+		line:     line,
 	}
 	a.apply(v)
 	u.cur.actions = append(u.cur.actions, a)
 }
 
-func (u *undo) delete(v *view, nbytes int) {
-	if u.cur.next != nil {
-		u.finalize_action_group()
-	}
-	bo := v.loc.cursor_boffset
-	d := v.loc.cursor_line.data
+func (u *undo) delete(v *view, line *line, offset int, nbytes int) {
+	u.maybe_next_action_group(v)
+	d := line.data
 	a := action{
 		what:     action_delete,
-		data:     d[bo : bo+nbytes],
-		offset:   bo,
-		line:     v.loc.cursor_line,
-		line_num: v.loc.cursor_line_num,
+		data:     d[offset : offset+nbytes],
+		offset:   offset,
+		line:     line,
+	}
+	a.apply(v)
+	u.cur.actions = append(u.cur.actions, a)
+}
+
+func (u *undo) insert_line(v *view, after *line) *line {
+	u.maybe_next_action_group(v)
+	a := action{
+		what:     action_insert_line,
+		line:     &line{prev: after},
+	}
+	a.apply(v)
+	u.cur.actions = append(u.cur.actions, a)
+	return a.line
+}
+
+func (u *undo) delete_line(v *view, line *line) {
+	u.maybe_next_action_group(v)
+	a := action{
+		what:     action_delete_line,
+		line:     line,
 	}
 	a.apply(v)
 	u.cur.actions = append(u.cur.actions, a)
@@ -804,26 +917,17 @@ func grow_byte_slice(s []byte, desired_cap int) []byte {
 	return s
 }
 
-func print_lines(l *line) {
-	i := 1
-	for ; l != nil; l = l.next {
-		fmt.Printf("%3d (%p) (p: %10p, n: %10p, l: %2d, c: %2d):  %s\n",
-			i, l, l.prev, l.next, len(l.data), cap(l.data), string(l.data))
-		i++
-	}
-}
-
 func process_alt_ch(ch rune, v *view) {
 	switch ch {
 	case 'v':
+		v.buf.undo.finalize_action_group(v)
 		v.move_view_n_lines(-v.uibuf.Height / 2)
-		v.buf.undo.maybe_finalize_action_group()
 	case '<':
+		v.buf.undo.finalize_action_group(v)
 		v.move_cursor_beginning_of_file()
-		v.buf.undo.maybe_finalize_action_group()
 	case '>':
+		v.buf.undo.finalize_action_group(v)
 		v.move_cursor_end_of_file()
-		v.buf.undo.maybe_finalize_action_group()
 	}
 }
 
@@ -855,30 +959,40 @@ func main() {
 			case termbox.KeyCtrlX:
 				return
 			case termbox.KeyCtrlF:
+				v.buf.undo.finalize_action_group(v)
 				v.move_cursor_forward()
-				v.buf.undo.maybe_finalize_action_group()
 			case termbox.KeyCtrlB:
+				v.buf.undo.finalize_action_group(v)
 				v.move_cursor_backward()
-				v.buf.undo.maybe_finalize_action_group()
 			case termbox.KeyCtrlN:
+				v.buf.undo.finalize_action_group(v)
 				v.move_cursor_next_line()
-				v.buf.undo.maybe_finalize_action_group()
 			case termbox.KeyCtrlP:
+				v.buf.undo.finalize_action_group(v)
 				v.move_cursor_prev_line()
-				v.buf.undo.maybe_finalize_action_group()
 			case termbox.KeyCtrlE:
+				v.buf.undo.finalize_action_group(v)
 				v.move_cursor_end_of_line()
-				v.buf.undo.maybe_finalize_action_group()
 			case termbox.KeyCtrlA:
+				v.buf.undo.finalize_action_group(v)
 				v.move_cursor_beginning_of_line()
-				v.buf.undo.maybe_finalize_action_group()
 			case termbox.KeyCtrlV:
+				v.buf.undo.finalize_action_group(v)
 				v.maybe_move_view_n_lines(v.uibuf.Height / 2)
-				v.buf.undo.maybe_finalize_action_group()
 			case termbox.KeyCtrlSlash:
+				v.buf.undo.finalize_action_group(v)
 				v.buf.undo.undo(v)
 			case termbox.KeySpace:
 				v.insert_rune(' ')
+			case termbox.KeyEnter, termbox.KeyCtrlJ:
+				v.buf.undo.finalize_action_group(v)
+				v.new_line()
+			case termbox.KeyBackspace, termbox.KeyBackspace2:
+				v.buf.undo.finalize_action_group(v)
+				v.backspace()
+			case termbox.KeyDelete, termbox.KeyCtrlD:
+				v.buf.undo.finalize_action_group(v)
+				v.delete()
 			}
 
 			if ev.Mod&termbox.ModAlt != 0 {
