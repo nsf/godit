@@ -559,6 +559,18 @@ func (v *view) delete() {
 	v.buf.undo.finalize_action_group(v)
 }
 
+func (v *view) kill_line() {
+	bo := v.loc.cursor_boffset
+	line := v.loc.cursor_line
+	if bo < len(line.data) {
+		// kill data from the cursor to the EOL
+		v.buf.undo.delete(v, line, bo, len(line.data)-bo)
+		v.buf.undo.finalize_action_group(v)
+		return
+	}
+	v.delete()
+}
+
 //----------------------------------------------------------------------------
 // line
 //----------------------------------------------------------------------------
@@ -1033,6 +1045,9 @@ func main() {
 			case termbox.KeyDelete, termbox.KeyCtrlD:
 				v.buf.undo.finalize_action_group(v)
 				v.delete()
+			case termbox.KeyCtrlK:
+				v.buf.undo.finalize_action_group(v)
+				v.kill_line()
 			}
 
 			if ev.Mod&termbox.ModAlt != 0 {
