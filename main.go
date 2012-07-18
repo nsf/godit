@@ -1010,25 +1010,25 @@ func main() {
 			switch ev.Key {
 			case termbox.KeyCtrlX:
 				return
-			case termbox.KeyCtrlF:
+			case termbox.KeyCtrlF, termbox.KeyArrowRight:
 				v.buf.undo.finalize_action_group(v)
 				v.move_cursor_forward()
-			case termbox.KeyCtrlB:
+			case termbox.KeyCtrlB, termbox.KeyArrowLeft:
 				v.buf.undo.finalize_action_group(v)
 				v.move_cursor_backward()
-			case termbox.KeyCtrlN:
+			case termbox.KeyCtrlN, termbox.KeyArrowDown:
 				v.buf.undo.finalize_action_group(v)
 				v.move_cursor_next_line()
-			case termbox.KeyCtrlP:
+			case termbox.KeyCtrlP, termbox.KeyArrowUp:
 				v.buf.undo.finalize_action_group(v)
 				v.move_cursor_prev_line()
-			case termbox.KeyCtrlE:
+			case termbox.KeyCtrlE, termbox.KeyEnd:
 				v.buf.undo.finalize_action_group(v)
 				v.move_cursor_end_of_line()
-			case termbox.KeyCtrlA:
+			case termbox.KeyCtrlA, termbox.KeyHome:
 				v.buf.undo.finalize_action_group(v)
 				v.move_cursor_beginning_of_line()
-			case termbox.KeyCtrlV:
+			case termbox.KeyCtrlV, termbox.KeyPgdn:
 				v.buf.undo.finalize_action_group(v)
 				v.maybe_move_view_n_lines(v.uibuf.Height / 2)
 			case termbox.KeyCtrlSlash:
@@ -1048,6 +1048,9 @@ func main() {
 			case termbox.KeyCtrlK:
 				v.buf.undo.finalize_action_group(v)
 				v.kill_line()
+			case termbox.KeyPgup:
+				v.buf.undo.finalize_action_group(v)
+				v.move_view_n_lines(-v.uibuf.Height / 2)
 			}
 
 			if ev.Mod&termbox.ModAlt != 0 {
