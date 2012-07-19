@@ -89,14 +89,16 @@ func (v *view) detach() {
 	}
 }
 
+// Resize the 'v.uibuf', adjusting things accordingly.
 func (v *view) resize(w, h int) {
 	v.uibuf.Resize(w, h)
 	v.adjust_line_voffset()
 	v.adjust_top_line()
 }
 
-// This function is similar to what happens inside 'redraw', but it contains
-// a certain amount of specific code related to 'loc.line_voffset'.
+// This function is similar to what happens inside 'redraw', but it contains a
+// certain amount of specific code related to 'loc.line_voffset'. You shouldn't
+// use it directly, call 'redraw' instead.
 func (v *view) draw_cursor_line(line *line, coff int) {
 	x := 0
 	tabstop := 0
@@ -144,6 +146,7 @@ func (v *view) draw_cursor_line(line *line, coff int) {
 	}
 }
 
+// Redraw the current view to the 'v.uibuf'.
 func (v *view) redraw() {
 	v.uibuf.Fill(v.uibuf.Rect(), termbox.Cell{
 		Ch: ' ',
@@ -205,6 +208,7 @@ func (v *view) redraw() {
 	}
 }
 
+// Move top line 'n' times forward or backward.
 func (v *view) move_top_line_n_times(n int) {
 	if n == 0 {
 		return
@@ -224,6 +228,7 @@ func (v *view) move_top_line_n_times(n int) {
 	v.loc.top_line = top
 }
 
+// Move cursor line 'n' times forward or backward.
 func (v *view) move_cursor_line_n_times(n int) {
 	if n == 0 {
 		return
@@ -399,18 +404,21 @@ otherline:
 	v.adjust_top_line()
 }
 
+// Move cursor one character forward.
 func (v *view) move_cursor_forward() {
 	line := v.loc.cursor_line
 	_, rlen := utf8.DecodeRune(line.data[v.loc.cursor_boffset:])
 	v.move_cursor_to(line, v.loc.cursor_line_num, v.loc.cursor_boffset+rlen)
 }
 
+// Move cursor one character backward.
 func (v *view) move_cursor_backward() {
 	line := v.loc.cursor_line
 	_, rlen := utf8.DecodeLastRune(line.data[:v.loc.cursor_boffset])
 	v.move_cursor_to(line, v.loc.cursor_line_num, v.loc.cursor_boffset-rlen)
 }
 
+// Move cursor to the next line.
 func (v *view) move_cursor_next_line() {
 	line := v.loc.cursor_line
 	if line.next != nil {
@@ -418,6 +426,7 @@ func (v *view) move_cursor_next_line() {
 	}
 }
 
+// Move cursor to the previous line.
 func (v *view) move_cursor_prev_line() {
 	line := v.loc.cursor_line
 	if line.prev != nil {
@@ -425,28 +434,34 @@ func (v *view) move_cursor_prev_line() {
 	}
 }
 
+// Move cursor to the beginning of the line.
 func (v *view) move_cursor_beginning_of_line() {
 	v.move_cursor_to(v.loc.cursor_line, v.loc.cursor_line_num, 0)
 }
 
+// Move cursor to the end of the line.
 func (v *view) move_cursor_end_of_line() {
 	line := v.loc.cursor_line
 	v.move_cursor_to(line, v.loc.cursor_line_num, len(line.data))
 }
 
+// Move cursor to the beginning of the file (buffer).
 func (v *view) move_cursor_beginning_of_file() {
 	v.move_cursor_to(v.buf.first_line, 1, 0)
 }
 
+// Move cursor to the enf of the file (buffer).
 func (v *view) move_cursor_end_of_file() {
 	v.move_cursor_to(v.buf.last_line, v.buf.lines_n, len(v.buf.last_line.data))
 }
 
+// Move view 'n' lines forward or backward.
 func (v *view) move_view_n_lines(n int) {
 	v.move_top_line_n_times(n)
 	v.adjust_cursor_line()
 }
 
+// Check if it's possible to move view 'n' lines forward or backward.
 func (v *view) can_move_top_line_n_times(n int) bool {
 	if n == 0 {
 		return true
@@ -468,12 +483,14 @@ func (v *view) can_move_top_line_n_times(n int) bool {
 	return true
 }
 
+// Move view 'n' lines forward or backward only if it's possible.
 func (v *view) maybe_move_view_n_lines(n int) {
 	if v.can_move_top_line_n_times(n) {
 		v.move_view_n_lines(n)
 	}
 }
 
+// Insert a rune 'r' at the current cursor position, advance cursor one character forward.
 func (v *view) insert_rune(r rune) {
 	var data [utf8.UTFMax]byte
 	len := utf8.EncodeRune(data[:], r)
@@ -482,7 +499,9 @@ func (v *view) insert_rune(r rune) {
 		v.loc.cursor_boffset+len)
 }
 
-// works like pressing enter
+// If at the EOL, simply insert a new line, otherwise move contents of the
+// current line (from the cursor to the end of the line) to the newly created
+// line.
 func (v *view) new_line() {
 	bo := v.loc.cursor_boffset
 	line := v.loc.cursor_line
@@ -499,6 +518,8 @@ func (v *view) new_line() {
 	v.buf.undo.finalize_action_group(v)
 }
 
+// If at the beginning of the line, move contents of the current line to the end
+// of the previous line. Otherwise, erase one character backward.
 func (v *view) backspace() {
 	bo := v.loc.cursor_boffset
 	line := v.loc.cursor_line
@@ -530,6 +551,9 @@ func (v *view) backspace() {
 	v.buf.undo.finalize_action_group(v)
 }
 
+// If at the EOL, move contents of the next line to the end of the current line,
+// erasing the next line after that. Otherwise, delete one character under the
+// cursor.
 func (v *view) delete() {
 	bo := v.loc.cursor_boffset
 	line := v.loc.cursor_line
@@ -559,6 +583,8 @@ func (v *view) delete() {
 	v.buf.undo.finalize_action_group(v)
 }
 
+// If not at the EOL, remove contents of the current line from the cursor to the
+// end. Otherwise behave like 'delete'.
 func (v *view) kill_line() {
 	bo := v.loc.cursor_boffset
 	line := v.loc.cursor_line
