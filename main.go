@@ -915,7 +915,7 @@ func (u *undo) undo(v *view) {
 }
 
 func (u *undo) redo(v *view) {
-	if u.cur.next == nil {
+	if u.cur.next == nil || len(u.cur.next.actions) == 0 {
 		// at the tip, nothing to redo
 		return
 	}
@@ -1081,6 +1081,9 @@ func main() {
 			case termbox.KeyPgup:
 				v.buf.undo.finalize_action_group(v)
 				v.move_view_n_lines(-v.uibuf.Height / 2)
+			case termbox.KeyCtrlR:
+				v.buf.undo.finalize_action_group(v)
+				v.buf.undo.redo(v)
 			}
 
 			if ev.Mod&termbox.ModAlt != 0 {
