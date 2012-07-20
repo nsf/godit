@@ -5,9 +5,10 @@ import (
 	"github.com/nsf/termbox-go"
 	"github.com/nsf/tulib"
 	"io"
+	"log"
 	"os"
-	"unicode/utf8"
 	"path/filepath"
+	"unicode/utf8"
 )
 
 const (
@@ -95,7 +96,7 @@ func (v *view) resize(w, h int) {
 }
 
 func (v *view) height() int {
-	return v.uibuf.Height-1
+	return v.uibuf.Height - 1
 }
 
 func (v *view) vertical_threshold() int {
@@ -242,7 +243,7 @@ func (v *view) redraw() {
 		Ch: '─',
 	})
 	v.uibuf.DrawLabel(tulib.Rect{3, v.height(), v.uibuf.Width, 1},
-		&lp, "  " + v.buf.name + "  ")
+		&lp, "  "+v.buf.name+"  ")
 }
 
 // Move top line 'n' times forward or backward.
@@ -843,6 +844,31 @@ type action struct {
 	line   *line
 }
 
+func (a *action) try_merge(b *action) bool {
+	if a.what != b.what {
+		// we can only merge things which have the same action type
+		return false
+	}
+	if a.line != b.line {
+		// we can only merge things which are on the same line
+		return false
+	}
+
+	switch a.what {
+	case action_insert, action_delete:
+		if a.offset+len(a.data) == b.offset {
+			a.data = append(a.data, b.data...)
+			return true
+		}
+		if b.offset+len(b.data) == a.offset {
+			*a, *b = *b, *a
+			a.data = append(a.data, b.data...)
+			return true
+		}
+	}
+	return false
+}
+
 func (a *action) apply(v *view) {
 	a.do(v, a.what)
 }
@@ -997,7 +1023,14 @@ func (u *undo) redo(v *view) {
 }
 
 func (u *undo) append(a *action) {
-	// TODO: merge
+	if len(u.cur.actions) != 0 {
+		// Oh, we have something in the group already, let's try to
+		// merge this action with the last one.
+		last := &u.cur.actions[len(u.cur.actions)-1]
+		if last.try_merge(a) {
+			return
+		}
+	}
 	u.cur.actions = append(u.cur.actions, *a)
 }
 
@@ -1045,6 +1078,43 @@ func (u *undo) delete_line(v *view, line *line) {
 	}
 	a.apply(v)
 	u.append(&a)
+}
+
+func (u *undo) dump_history() {
+	ag := u.cur
+	for ag.prev != nil {
+		ag = ag.prev
+	}
+	i := 0
+	for ag != nil {
+		log.Printf("action group %d, %d entries\n", i, len(ag.actions))
+		for i := range ag.actions {
+			a := &ag.actions[i]
+			switch a.what {
+			case action_insert:
+				log.Printf("\tinsert %p, %d:%d (%s)\n",
+					a.line, a.offset, len(a.data), string(a.data))
+			case action_delete:
+				log.Printf("\tdelete %p, %d:%d (%s)\n",
+					a.line, a.offset, len(a.data), string(a.data))
+			case action_insert_line:
+				log.Printf("\tinsert line %p\n", a.line)
+			case action_delete_line:
+				log.Printf("\tdelete line %p\n", a.line)
+			}
+		}
+		ag = ag.next
+	}
+}
+
+//----------------------------------------------------------------------------
+// godit
+//
+// Main top-level structure, that handles views composition, command line and
+// input messaging. Also it's the spot where keyboard macros are implemented.
+// ----------------------------------------------------------------------------
+
+type godit struct {
 }
 
 func grow_byte_slice(s []byte, desired_cap int) []byte {
@@ -1151,6 +1221,8 @@ func main() {
 			case termbox.KeyCtrlR:
 				v.buf.undo.finalize_action_group(v)
 				v.buf.undo.redo(v)
+			case termbox.KeyF1:
+				v.buf.undo.dump_history()
 			}
 
 			if ev.Mod&termbox.ModAlt != 0 {
