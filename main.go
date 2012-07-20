@@ -531,11 +531,31 @@ func (v *view) maybe_move_view_n_lines(n int) {
 	}
 }
 
+// Shortcut for v.buf.undo.insert(v, ...)
+func (v *view) insert(line *line, offset int, data []byte) {
+	v.buf.undo.insert(v, line, offset, data)
+}
+
+// Shortcut for v.buf.undo.delete(v, ...)
+func (v *view) delete(line *line, offset int, nbytes int) {
+	v.buf.undo.delete(v, line, offset, nbytes)
+}
+
+// Shortcut for v.buf.undo.insert_line(v, ...)
+func (v *view) insert_line(after *line) *line {
+	return v.buf.undo.insert_line(v, after)
+}
+
+// Shortcut for v.buf.undo.delete_line(v, ...)
+func (v *view) delete_line(line *line) {
+	v.buf.undo.delete_line(v, line)
+}
+
 // Insert a rune 'r' at the current cursor position, advance cursor one character forward.
 func (v *view) insert_rune(r rune) {
 	var data [utf8.UTFMax]byte
 	len := utf8.EncodeRune(data[:], r)
-	v.buf.undo.insert(v, v.loc.cursor_line, v.loc.cursor_boffset, data[:len])
+	v.insert(v.loc.cursor_line, v.loc.cursor_boffset, data[:len])
 	v.move_cursor_to(v.loc.cursor_line, v.loc.cursor_line_num,
 		v.loc.cursor_boffset+len)
 }
@@ -548,12 +568,12 @@ func (v *view) new_line() {
 	line := v.loc.cursor_line
 	if bo < len(line.data) {
 		data := copy_byte_slice(line.data, bo, len(line.data))
-		v.buf.undo.delete(v, line, bo, len(data))
-		nl := v.buf.undo.insert_line(v, line)
-		v.buf.undo.insert(v, nl, 0, data)
+		v.delete(line, bo, len(data))
+		nl := v.insert_line(line)
+		v.insert(nl, 0, data)
 		v.move_cursor_to(nl, v.loc.cursor_line_num+1, 0)
 	} else {
-		nl := v.buf.undo.insert_line(v, line)
+		nl := v.insert_line(line)
 		v.move_cursor_to(nl, v.loc.cursor_line_num+1, 0)
 	}
 	v.buf.undo.finalize_action_group(v)
@@ -561,7 +581,7 @@ func (v *view) new_line() {
 
 // If at the beginning of the line, move contents of the current line to the end
 // of the previous line. Otherwise, erase one character backward.
-func (v *view) backspace() {
+func (v *view) delete_rune_backward() {
 	bo := v.loc.cursor_boffset
 	line := v.loc.cursor_line
 	if bo == 0 {
@@ -573,12 +593,11 @@ func (v *view) backspace() {
 		var data []byte
 		if len(line.data) > 0 {
 			data = copy_byte_slice(line.data, 0, len(line.data))
-			v.buf.undo.delete(v, line, 0, len(line.data))
+			v.delete(line, 0, len(line.data))
 		}
-		v.buf.undo.delete_line(v, line)
+		v.delete_line(line)
 		if data != nil {
-			v.buf.undo.insert(v, line.prev,
-				len(line.prev.data), data)
+			v.insert(line.prev, len(line.prev.data), data)
 		}
 		v.move_cursor_to(line.prev, v.loc.cursor_line_num-1,
 			len(line.prev.data)-len(data))
@@ -587,7 +606,7 @@ func (v *view) backspace() {
 	}
 
 	_, rlen := utf8.DecodeLastRune(line.data[:bo])
-	v.buf.undo.delete(v, line, bo-rlen, rlen)
+	v.delete(line, bo-rlen, rlen)
 	v.move_cursor_to(line, v.loc.cursor_line_num, bo-rlen)
 	v.buf.undo.finalize_action_group(v)
 }
@@ -595,7 +614,7 @@ func (v *view) backspace() {
 // If at the EOL, move contents of the next line to the end of the current line,
 // erasing the next line after that. Otherwise, delete one character under the
 // cursor.
-func (v *view) delete() {
+func (v *view) delete_rune() {
 	bo := v.loc.cursor_boffset
 	line := v.loc.cursor_line
 	if bo == len(line.data) {
@@ -608,19 +627,18 @@ func (v *view) delete() {
 		if len(line.next.data) > 0 {
 			data = copy_byte_slice(line.next.data, 0,
 				len(line.next.data))
-			v.buf.undo.delete(v, line.next, 0,
-				len(line.next.data))
+			v.delete(line.next, 0, len(line.next.data))
 		}
-		v.buf.undo.delete_line(v, line.next)
+		v.delete_line(line.next)
 		if data != nil {
-			v.buf.undo.insert(v, line, len(line.data), data)
+			v.insert(line, len(line.data), data)
 		}
 		v.buf.undo.finalize_action_group(v)
 		return
 	}
 
 	_, rlen := utf8.DecodeRune(line.data[bo:])
-	v.buf.undo.delete(v, line, bo, rlen)
+	v.delete(line, bo, rlen)
 	v.buf.undo.finalize_action_group(v)
 }
 
@@ -631,11 +649,11 @@ func (v *view) kill_line() {
 	line := v.loc.cursor_line
 	if bo < len(line.data) {
 		// kill data from the cursor to the EOL
-		v.buf.undo.delete(v, line, bo, len(line.data)-bo)
+		v.delete(line, bo, len(line.data)-bo)
 		v.buf.undo.finalize_action_group(v)
 		return
 	}
-	v.delete()
+	v.delete_rune()
 }
 
 //----------------------------------------------------------------------------
@@ -1208,10 +1226,10 @@ func main() {
 				v.new_line()
 			case termbox.KeyBackspace, termbox.KeyBackspace2:
 				v.buf.undo.finalize_action_group(v)
-				v.backspace()
+				v.delete_rune_backward()
 			case termbox.KeyDelete, termbox.KeyCtrlD:
 				v.buf.undo.finalize_action_group(v)
-				v.delete()
+				v.delete_rune()
 			case termbox.KeyCtrlK:
 				v.buf.undo.finalize_action_group(v)
 				v.kill_line()
