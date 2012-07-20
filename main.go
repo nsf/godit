@@ -10,9 +10,6 @@ import (
 	"path/filepath"
 )
 
-var _ termbox.Cell
-var _ tulib.Rect
-
 const (
 	tabstop_length            = 8
 	view_vertical_threshold   = 5
