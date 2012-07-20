@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"unicode/utf8"
+	"path/filepath"
 )
 
 var _ termbox.Cell
@@ -96,6 +97,31 @@ func (v *view) resize(w, h int) {
 	v.adjust_top_line()
 }
 
+func (v *view) height() int {
+	return v.uibuf.Height-1
+}
+
+func (v *view) vertical_threshold() int {
+	max_v_threshold := (v.height() - 1) / 2
+	if view_vertical_threshold > max_v_threshold {
+		return max_v_threshold
+	}
+	return view_vertical_threshold
+}
+
+func (v *view) horizontal_threshold() int {
+	max_h_threshold := (v.width() - 1) / 2
+	if view_horizontal_threshold > max_h_threshold {
+		return max_h_threshold
+	}
+	return view_horizontal_threshold
+}
+
+func (v *view) width() int {
+	// TODO: perhaps if I want to draw line numbers, I will hack it there
+	return v.uibuf.Width
+}
+
 // This function is similar to what happens inside 'redraw', but it contains a
 // certain amount of specific code related to 'loc.line_voffset'. You shouldn't
 // use it directly, call 'redraw' instead.
@@ -148,15 +174,17 @@ func (v *view) draw_cursor_line(line *line, coff int) {
 
 // Redraw the current view to the 'v.uibuf'.
 func (v *view) redraw() {
-	v.uibuf.Fill(v.uibuf.Rect(), termbox.Cell{
+	// clear the buffer
+	v.uibuf.Fill(v.uibuf.Rect, termbox.Cell{
 		Ch: ' ',
 		Fg: termbox.ColorDefault,
 		Bg: termbox.ColorDefault,
 	})
 
+	// draw lines
 	line := v.loc.top_line
 	coff := 0
-	for y := 0; y < v.uibuf.Height; y++ {
+	for y, h := 0, v.height(); y < h; y++ {
 		if line == nil {
 			break
 		}
@@ -206,6 +234,18 @@ func (v *view) redraw() {
 		coff += v.uibuf.Width
 		line = line.next
 	}
+
+	// draw status bar
+	lp := tulib.DefaultLabelParams
+	lp.Bg = termbox.AttrReverse
+	lp.Fg = termbox.AttrReverse | termbox.AttrBold
+	v.uibuf.Fill(tulib.Rect{0, v.height(), v.uibuf.Width, 1}, termbox.Cell{
+		Fg: termbox.AttrReverse,
+		Bg: termbox.AttrReverse,
+		Ch: '─',
+	})
+	v.uibuf.DrawLabel(tulib.Rect{3, v.height(), v.uibuf.Width, 1},
+		&lp, "  " + v.buf.name + "  ")
 }
 
 // Move top line 'n' times forward or backward.
@@ -251,16 +291,17 @@ func (v *view) move_cursor_line_n_times(n int) {
 // When 'top_line' was changed, call this function to possibly adjust the
 // 'cursor_line'.
 func (v *view) adjust_cursor_line() {
+	vt := v.vertical_threshold()
 	cursor := v.loc.cursor_line
 	co := v.loc.cursor_line_num - v.loc.top_line_num
-	h := v.uibuf.Height
+	h := v.height()
 
-	if cursor.next != nil && co < view_vertical_threshold {
-		v.move_cursor_line_n_times(view_vertical_threshold - co)
+	if cursor.next != nil && co < vt {
+		v.move_cursor_line_n_times(vt - co)
 	}
 
-	if cursor.prev != nil && co >= h-view_vertical_threshold {
-		v.move_cursor_line_n_times((h - view_vertical_threshold) - co - 1)
+	if cursor.prev != nil && co >= h-vt {
+		v.move_cursor_line_n_times((h - vt) - co - 1)
 	}
 
 	cursor = v.loc.cursor_line
@@ -275,36 +316,38 @@ func (v *view) adjust_cursor_line() {
 // When 'cursor_line' was changed, call this function to possibly adjust the
 // 'top_line'.
 func (v *view) adjust_top_line() {
+	vt := v.vertical_threshold()
 	top := v.loc.top_line
 	co := v.loc.cursor_line_num - v.loc.top_line_num
-	h := v.uibuf.Height
+	h := v.height()
 
-	if top.next != nil && co >= h-view_vertical_threshold {
-		v.move_top_line_n_times(co - (h - view_vertical_threshold) + 1)
+	if top.next != nil && co >= h-vt {
+		v.move_top_line_n_times(co - (h - vt) + 1)
 	}
 
-	if top.prev != nil && co < view_vertical_threshold {
-		v.move_top_line_n_times(co - view_vertical_threshold)
+	if top.prev != nil && co < vt {
+		v.move_top_line_n_times(co - vt)
 	}
 }
 
 // When 'cursor_voffset' was changed usually > 0, then call this function to
 // possibly adjust 'line_voffset'.
 func (v *view) adjust_line_voffset() {
+	ht := v.horizontal_threshold()
 	w := v.uibuf.Width
 	vo := v.loc.line_voffset
 	cvo := v.loc.cursor_voffset
 	threshold := w - 1
 	if vo != 0 {
-		threshold -= view_horizontal_threshold - 1
+		threshold -= ht - 1
 	}
 
 	if cvo-vo >= threshold {
-		vo = cvo + (view_horizontal_threshold - w + 1)
+		vo = cvo + (ht - w + 1)
 	}
 
-	if vo != 0 && cvo-vo < view_horizontal_threshold {
-		vo = cvo - view_horizontal_threshold
+	if vo != 0 && cvo-vo < ht {
+		vo = cvo - ht
 		if vo < 0 {
 			vo = 0
 		}
@@ -674,6 +717,12 @@ type buffer struct {
 	loc        view_location
 	lines_n    int
 	undo       undo
+
+	// absoulte path if there is any, empty line otherwise
+	path string
+
+	// buffer name (displayed in the status line)
+	name string
 }
 
 func new_buffer() *buffer {
@@ -691,6 +740,27 @@ func new_buffer() *buffer {
 	}
 	b.undo.init()
 	return b
+}
+
+func new_buffer_from_file(filename string) (*buffer, error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	buf, err := new_buffer_from_reader(f)
+	if err != nil {
+		return nil, err
+	}
+
+	buf.name = filename
+	buf.path, err = filepath.Abs(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	return buf, err
 }
 
 func new_buffer_from_reader(r io.Reader) (*buffer, error) {
@@ -999,7 +1069,7 @@ func process_alt_ch(ch rune, v *view) {
 	switch ch {
 	case 'v':
 		v.buf.undo.finalize_action_group(v)
-		v.move_view_n_lines(-v.uibuf.Height / 2)
+		v.move_view_n_lines(-v.height() / 2)
 	case '<':
 		v.buf.undo.finalize_action_group(v)
 		v.move_cursor_beginning_of_file()
@@ -1014,11 +1084,11 @@ func main() {
 		println("usage: godit <file>")
 		return
 	}
-	f, _ := os.Open(os.Args[1])
-	defer f.Close()
-	b, _ := new_buffer_from_reader(f)
-
-	err := termbox.Init()
+	b, err := new_buffer_from_file(os.Args[1])
+	if err != nil {
+		panic(err)
+	}
+	err = termbox.Init()
 	if err != nil {
 		panic(err)
 	}
@@ -1060,7 +1130,7 @@ func main() {
 				v.move_cursor_beginning_of_line()
 			case termbox.KeyCtrlV, termbox.KeyPgdn:
 				v.buf.undo.finalize_action_group(v)
-				v.maybe_move_view_n_lines(v.uibuf.Height / 2)
+				v.maybe_move_view_n_lines(v.height() / 2)
 			case termbox.KeyCtrlSlash:
 				v.buf.undo.finalize_action_group(v)
 				v.buf.undo.undo(v)
@@ -1080,7 +1150,7 @@ func main() {
 				v.kill_line()
 			case termbox.KeyPgup:
 				v.buf.undo.finalize_action_group(v)
-				v.move_view_n_lines(-v.uibuf.Height / 2)
+				v.move_view_n_lines(-v.height() / 2)
 			case termbox.KeyCtrlR:
 				v.buf.undo.finalize_action_group(v)
 				v.buf.undo.redo(v)
