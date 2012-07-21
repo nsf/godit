@@ -91,8 +91,10 @@ func (v *view) detach() {
 // Resize the 'v.uibuf', adjusting things accordingly.
 func (v *view) resize(w, h int) {
 	v.uibuf.Resize(w, h)
-	v.adjust_line_voffset()
-	v.adjust_top_line()
+	if v.buf != nil {
+		v.adjust_line_voffset()
+		v.adjust_top_line()
+	}
 }
 
 func (v *view) height() int {
@@ -529,6 +531,11 @@ func (v *view) maybe_move_view_n_lines(n int) {
 	if v.can_move_top_line_n_times(n) {
 		v.move_view_n_lines(n)
 	}
+}
+
+// Shortcut for v.buf.undo.finalize_action_group(v)
+func (v *view) finalize_action_group() {
+	v.buf.undo.finalize_action_group(v)
 }
 
 // Shortcut for v.buf.undo.insert(v, ...)
@@ -1132,7 +1139,272 @@ func (u *undo) dump_history() {
 // input messaging. Also it's the spot where keyboard macros are implemented.
 // ----------------------------------------------------------------------------
 
+type view_tree struct {
+	// I'm wasting a bit of space here, but who cares
+	left *view_tree
+	top *view_tree
+	right *view_tree
+	bottom *view_tree
+	split float32
+	leaf *view
+}
+
+func new_view_tree_leaf(v *view) *view_tree {
+	return &view_tree{
+		leaf: v,
+	}
+}
+
+func (v *view_tree) split_vertically() {
+	top := v.leaf
+	bottom := new_view(1, 1)
+	bottom.attach(top.buf)
+	*v = view_tree{
+		top: new_view_tree_leaf(top),
+		bottom: new_view_tree_leaf(bottom),
+		split: 0.5,
+	}
+}
+
+func (v *view_tree) split_horizontally() {
+	left := v.leaf
+	right := new_view(1, 1)
+	right.attach(left.buf)
+	*v = view_tree{
+		left: new_view_tree_leaf(left),
+		right: new_view_tree_leaf(right),
+		split: 0.5,
+	}
+}
+
+func (v *view_tree) redraw() {
+	if v.leaf != nil {
+		v.leaf.redraw()
+		return
+	}
+
+	if v.left != nil {
+		v.left.redraw()
+		v.right.redraw()
+	} else {
+		v.top.redraw()
+		v.bottom.redraw()
+	}
+}
+
+func (v *view_tree) resize(w, h int) {
+	if v.leaf != nil {
+		v.leaf.resize(w, h)
+		return
+	}
+
+	if v.left != nil {
+		// horizontal split, use 'w'
+		w-- // reserve one line for splitter
+		lw := int(float32(w) * v.split)
+		rw := w - lw
+		v.left.resize(lw, h)
+		v.right.resize(rw, h)
+	} else {
+		// vertical split, use 'h', no need to reserve one line for
+		// splitter, because splitters are part of the buffer's output
+		// (their status bars act like a splitter)
+		th := int(float32(h) * v.split)
+		bh := h - th
+		v.top.resize(w, th)
+		v.bottom.resize(w, bh)
+	}
+}
+
 type godit struct {
+	uibuf tulib.Buffer
+	active *view_tree // this one is always a leaf node
+	views *view_tree // a root node
+	buffers []*buffer
+
+	// updated after 'composite' call
+	last_cursor_x int
+	last_cursor_y int
+}
+
+func new_godit() *godit {
+	g := new(godit)
+	g.views = new_view_tree_leaf(new_view(1, 1))
+	g.active = g.views
+	g.buffers = make([]*buffer, 0, 20)
+	g.last_cursor_x = -1
+	g.last_cursor_y = -1
+	g.resize()
+	return g
+}
+
+func (g *godit) split_horizontally() {
+	g.active.split_horizontally()
+	g.active = g.active.left
+}
+
+func (g *godit) split_vertically() {
+	g.active.split_vertically()
+	g.active = g.active.top
+}
+
+func (g *godit) resize() {
+	g.uibuf = tulib.TermboxBuffer()
+	g.views.resize(g.uibuf.Width, g.uibuf.Height)
+}
+
+func (g *godit) open_file(filename string) {
+	// TODO: use g.buffers
+	buf, err := new_buffer_from_file(filename)
+	if err != nil {
+		panic(err)
+	}
+
+	g.active.leaf.attach(buf)
+}
+
+func (g *godit) redraw() {
+	g.views.redraw()
+}
+
+func (g *godit) composite() {
+	g.composite_recursive(g.views, g.uibuf.Rect)
+}
+
+func (g *godit) full_redraw() {
+	g.redraw()
+	g.composite()
+}
+
+func (g *godit) cursor_position() (int, int) {
+	return g.last_cursor_x, g.last_cursor_y
+}
+
+func (g *godit) composite_recursive(v *view_tree, r tulib.Rect) {
+	if v.leaf != nil {
+		if v == g.active {
+			// if this is an active leaf node, update cursor position
+			x, y := v.leaf.cursor_position()
+			g.last_cursor_x = r.X + x
+			g.last_cursor_y = r.Y + y
+		}
+		g.uibuf.Blit(r, 0, 0, &v.leaf.uibuf)
+		return
+	}
+
+	if v.left != nil {
+		// left and right, recurse and draw a separator
+		w := r.Width - 1
+		lw := int(float32(w) * v.split)
+		rw := w - lw
+		g.composite_recursive(v.left, tulib.Rect{r.X, r.Y, lw, r.Height})
+		g.composite_recursive(v.right, tulib.Rect{r.X+lw+1, r.Y, rw, r.Height})
+		g.uibuf.Fill(tulib.Rect{r.X+lw, r.Y, 1, r.Height}, termbox.Cell{
+			Fg: termbox.AttrReverse,
+			Bg: termbox.AttrReverse,
+			Ch: '│',
+		})
+	} else {
+		h := r.Height
+		th := int(float32(h) * v.split)
+		bh := h - th
+		g.composite_recursive(v.top, tulib.Rect{r.X, r.Y, r.Width, th})
+		g.composite_recursive(v.bottom, tulib.Rect{r.X, r.Y+th, r.Width, bh})
+	}
+}
+
+func handle_alt_ch(ch rune, v *view) {
+	switch ch {
+	case 'v':
+		v.finalize_action_group()
+		v.move_view_n_lines(-v.height() / 2)
+	case '<':
+		v.finalize_action_group()
+		v.move_cursor_beginning_of_file()
+	case '>':
+		v.finalize_action_group()
+		v.move_cursor_end_of_file()
+	}
+}
+
+func (g *godit) handle_event(ev *termbox.Event) bool {
+	v := g.active.leaf
+	switch ev.Type {
+	case termbox.EventKey:
+		switch ev.Key {
+		case termbox.KeyCtrlX:
+			return false
+		case termbox.KeyCtrlF, termbox.KeyArrowRight:
+			v.finalize_action_group()
+			v.move_cursor_forward()
+		case termbox.KeyCtrlB, termbox.KeyArrowLeft:
+			v.finalize_action_group()
+			v.move_cursor_backward()
+		case termbox.KeyCtrlN, termbox.KeyArrowDown:
+			v.finalize_action_group()
+			v.move_cursor_next_line()
+		case termbox.KeyCtrlP, termbox.KeyArrowUp:
+			v.finalize_action_group()
+			v.move_cursor_prev_line()
+		case termbox.KeyCtrlE, termbox.KeyEnd:
+			v.finalize_action_group()
+			v.move_cursor_end_of_line()
+		case termbox.KeyCtrlA, termbox.KeyHome:
+			v.finalize_action_group()
+			v.move_cursor_beginning_of_line()
+		case termbox.KeyCtrlV, termbox.KeyPgdn:
+			v.finalize_action_group()
+			v.maybe_move_view_n_lines(v.height() / 2)
+		case termbox.KeyCtrlSlash:
+			v.finalize_action_group()
+			v.buf.undo.undo(v)
+		case termbox.KeySpace:
+			v.insert_rune(' ')
+		case termbox.KeyEnter, termbox.KeyCtrlJ:
+			v.finalize_action_group()
+			v.new_line()
+		case termbox.KeyBackspace, termbox.KeyBackspace2:
+			v.finalize_action_group()
+			v.delete_rune_backward()
+		case termbox.KeyDelete, termbox.KeyCtrlD:
+			v.finalize_action_group()
+			v.delete_rune()
+		case termbox.KeyCtrlK:
+			v.finalize_action_group()
+			v.kill_line()
+		case termbox.KeyPgup:
+			v.finalize_action_group()
+			v.move_view_n_lines(-v.height() / 2)
+		case termbox.KeyCtrlR:
+			v.finalize_action_group()
+			v.buf.undo.redo(v)
+		case termbox.KeyF1:
+			v.buf.undo.dump_history()
+		case termbox.KeyF2:
+			g.split_horizontally()
+			g.resize()
+		case termbox.KeyF3:
+			g.split_vertically()
+			g.resize()
+		}
+
+		if ev.Mod&termbox.ModAlt != 0 {
+			handle_alt_ch(ev.Ch, v)
+		} else if ev.Ch != 0 {
+			v.insert_rune(ev.Ch)
+		}
+
+		g.full_redraw()
+		termbox.SetCursor(g.cursor_position())
+		termbox.Flush()
+	case termbox.EventResize:
+		termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
+		g.resize()
+		g.full_redraw()
+		termbox.SetCursor(g.cursor_position())
+		termbox.Flush()
+	}
+	return true
 }
 
 func grow_byte_slice(s []byte, desired_cap int) []byte {
@@ -1150,116 +1422,30 @@ func copy_byte_slice(s []byte, b, e int) []byte {
 	return c
 }
 
-func process_alt_ch(ch rune, v *view) {
-	switch ch {
-	case 'v':
-		v.buf.undo.finalize_action_group(v)
-		v.move_view_n_lines(-v.height() / 2)
-	case '<':
-		v.buf.undo.finalize_action_group(v)
-		v.move_cursor_beginning_of_file()
-	case '>':
-		v.buf.undo.finalize_action_group(v)
-		v.move_cursor_end_of_file()
-	}
-}
-
 func main() {
 	if len(os.Args) != 2 {
 		println("usage: godit <file>")
 		return
 	}
-	b, err := new_buffer_from_file(os.Args[1])
-	if err != nil {
-		panic(err)
-	}
-	err = termbox.Init()
+
+	err := termbox.Init()
 	if err != nil {
 		panic(err)
 	}
 	defer termbox.Close()
 	termbox.SetInputMode(termbox.InputAlt)
 
-	w, h := termbox.Size()
-	v := new_view(w, h)
-	termbox.SetCursor(v.cursor_position())
-	v.attach(b)
-	v.redraw()
-	copy(termbox.CellBuffer(), v.uibuf.Cells)
+	godit := new_godit()
+	godit.open_file(os.Args[1])
+	godit.full_redraw()
+	termbox.SetCursor(godit.cursor_position())
 	termbox.Flush()
 
 	for {
 		ev := termbox.PollEvent()
-		switch ev.Type {
-		case termbox.EventKey:
-			switch ev.Key {
-			case termbox.KeyCtrlX:
-				return
-			case termbox.KeyCtrlF, termbox.KeyArrowRight:
-				v.buf.undo.finalize_action_group(v)
-				v.move_cursor_forward()
-			case termbox.KeyCtrlB, termbox.KeyArrowLeft:
-				v.buf.undo.finalize_action_group(v)
-				v.move_cursor_backward()
-			case termbox.KeyCtrlN, termbox.KeyArrowDown:
-				v.buf.undo.finalize_action_group(v)
-				v.move_cursor_next_line()
-			case termbox.KeyCtrlP, termbox.KeyArrowUp:
-				v.buf.undo.finalize_action_group(v)
-				v.move_cursor_prev_line()
-			case termbox.KeyCtrlE, termbox.KeyEnd:
-				v.buf.undo.finalize_action_group(v)
-				v.move_cursor_end_of_line()
-			case termbox.KeyCtrlA, termbox.KeyHome:
-				v.buf.undo.finalize_action_group(v)
-				v.move_cursor_beginning_of_line()
-			case termbox.KeyCtrlV, termbox.KeyPgdn:
-				v.buf.undo.finalize_action_group(v)
-				v.maybe_move_view_n_lines(v.height() / 2)
-			case termbox.KeyCtrlSlash:
-				v.buf.undo.finalize_action_group(v)
-				v.buf.undo.undo(v)
-			case termbox.KeySpace:
-				v.insert_rune(' ')
-			case termbox.KeyEnter, termbox.KeyCtrlJ:
-				v.buf.undo.finalize_action_group(v)
-				v.new_line()
-			case termbox.KeyBackspace, termbox.KeyBackspace2:
-				v.buf.undo.finalize_action_group(v)
-				v.delete_rune_backward()
-			case termbox.KeyDelete, termbox.KeyCtrlD:
-				v.buf.undo.finalize_action_group(v)
-				v.delete_rune()
-			case termbox.KeyCtrlK:
-				v.buf.undo.finalize_action_group(v)
-				v.kill_line()
-			case termbox.KeyPgup:
-				v.buf.undo.finalize_action_group(v)
-				v.move_view_n_lines(-v.height() / 2)
-			case termbox.KeyCtrlR:
-				v.buf.undo.finalize_action_group(v)
-				v.buf.undo.redo(v)
-			case termbox.KeyF1:
-				v.buf.undo.dump_history()
-			}
-
-			if ev.Mod&termbox.ModAlt != 0 {
-				process_alt_ch(ev.Ch, v)
-			} else if ev.Ch != 0 {
-				v.insert_rune(ev.Ch)
-			}
-
-			termbox.SetCursor(v.cursor_position())
-			v.redraw()
-			copy(termbox.CellBuffer(), v.uibuf.Cells)
-			termbox.Flush()
-		case termbox.EventResize:
-			termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
-			v.resize(ev.Width, ev.Height)
-			termbox.SetCursor(v.cursor_position())
-			v.redraw()
-			copy(termbox.CellBuffer(), v.uibuf.Cells)
-			termbox.Flush()
+		ok := godit.handle_event(&ev)
+		if !ok {
+			return
 		}
 	}
 }
