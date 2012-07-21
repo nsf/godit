@@ -982,12 +982,6 @@ func (u *undo) init() {
 }
 
 func (u *undo) maybe_next_action_group(v *view) {
-	// if there are no actions and we're not at the sentinel, it means we're
-	// on the tip, don't move further
-	if len(u.cur.actions) == 0 && u.cur.prev != nil {
-		return
-	}
-
 	// no need to move
 	if u.cur.next == nil {
 		return
@@ -1021,6 +1015,9 @@ func (u *undo) undo(v *view) {
 		return
 	}
 
+	// undo action causes finalization, always
+	u.finalize_action_group(v)
+
 	// undo invariant tells us 'len(u.cur.actions) != 0' in case if this is
 	// not a sentinel, revert the actions in the current action group
 	for i := len(u.cur.actions) - 1; i >= 0; i-- {
@@ -1033,11 +1030,17 @@ func (u *undo) undo(v *view) {
 }
 
 func (u *undo) redo(v *view) {
-	if u.cur.next == nil || len(u.cur.next.actions) == 0 {
-		// at the tip, nothing to redo
+	if u.cur.next == nil {
+		// open group, obviously, can't move forward
+		return
+	}
+	if len(u.cur.next.actions) == 0 {
+		// last finalized group, moving to the next group breaks the
+		// invariant and doesn't make sense (nothing to redo)
 		return
 	}
 
+	// move one entry forward, and redo all its actions
 	u.cur = u.cur.next
 	for i := range u.cur.actions {
 		a := &u.cur.actions[i]
@@ -1356,7 +1359,6 @@ func (g *godit) handle_event(ev *termbox.Event) bool {
 			v.finalize_action_group()
 			v.maybe_move_view_n_lines(v.height() / 2)
 		case termbox.KeyCtrlSlash:
-			v.finalize_action_group()
 			v.buf.undo.undo(v)
 		case termbox.KeySpace:
 			v.insert_rune(' ')
@@ -1376,7 +1378,6 @@ func (g *godit) handle_event(ev *termbox.Event) bool {
 			v.finalize_action_group()
 			v.move_view_n_lines(-v.height() / 2)
 		case termbox.KeyCtrlR:
-			v.finalize_action_group()
 			v.buf.undo.redo(v)
 		case termbox.KeyF1:
 			v.buf.undo.dump_history()
