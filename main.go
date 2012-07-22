@@ -63,6 +63,7 @@ type view struct {
 	buf   *buffer // currently displayed buffer
 	uibuf tulib.Buffer
 	loc   view_location
+	dirty bool
 }
 
 func new_view(w, h int) *view {
@@ -72,13 +73,15 @@ func new_view(w, h int) *view {
 }
 
 func (v *view) attach(b *buffer) {
-	if v.buf != nil {
-		v.buf.delete_view(v)
+	if v.buf == b {
+		return
 	}
 
+	v.detach()
 	v.buf = b
 	v.loc = b.loc
 	b.add_view(v)
+	v.dirty = true
 }
 
 func (v *view) detach() {
@@ -94,6 +97,7 @@ func (v *view) resize(w, h int) {
 	if v.buf != nil {
 		v.adjust_line_voffset()
 		v.adjust_top_line()
+		v.dirty = true
 	}
 }
 
@@ -174,6 +178,11 @@ func (v *view) draw_cursor_line(line *line, coff int) {
 
 // Redraw the current view to the 'v.uibuf'.
 func (v *view) redraw() {
+	if !v.dirty {
+		return
+	}
+	v.dirty = false
+
 	// clear the buffer
 	v.uibuf.Fill(v.uibuf.Rect, termbox.Cell{
 		Ch: ' ',
@@ -304,13 +313,16 @@ func (v *view) adjust_cursor_line() {
 		v.move_cursor_line_n_times((h - vt) - co - 1)
 	}
 
-	cursor = v.loc.cursor_line
-	bo, co, vo := cursor.find_closest_offsets(v.loc.last_cursor_voffset)
-	v.loc.cursor_boffset = bo
-	v.loc.cursor_coffset = co
-	v.loc.cursor_voffset = vo
-	v.loc.line_voffset = 0
-	v.adjust_line_voffset()
+	if cursor != v.loc.cursor_line {
+		cursor = v.loc.cursor_line
+		bo, co, vo := cursor.find_closest_offsets(v.loc.last_cursor_voffset)
+		v.loc.cursor_boffset = bo
+		v.loc.cursor_coffset = co
+		v.loc.cursor_voffset = vo
+		v.loc.line_voffset = 0
+		v.adjust_line_voffset()
+		v.dirty = true
+	}
 }
 
 // When 'cursor_line' was changed, call this function to possibly adjust the
@@ -323,10 +335,12 @@ func (v *view) adjust_top_line() {
 
 	if top.next != nil && co >= h-vt {
 		v.move_top_line_n_times(co - (h - vt) + 1)
+		v.dirty = true
 	}
 
 	if top.prev != nil && co < vt {
 		v.move_top_line_n_times(co - vt)
+		v.dirty = true
 	}
 }
 
@@ -353,7 +367,10 @@ func (v *view) adjust_line_voffset() {
 		}
 	}
 
-	v.loc.line_voffset = vo
+	if v.loc.line_voffset != vo {
+		v.loc.line_voffset = vo
+		v.dirty = true
+	}
 }
 
 func (v *view) cursor_position() (int, int) {
@@ -500,8 +517,12 @@ func (v *view) move_cursor_end_of_file() {
 
 // Move view 'n' lines forward or backward.
 func (v *view) move_view_n_lines(n int) {
+	prevtop := v.loc.top_line_num
 	v.move_top_line_n_times(n)
 	v.adjust_cursor_line()
+	if prevtop != v.loc.top_line_num {
+		v.dirty = true
+	}
 }
 
 // Check if it's possible to move view 'n' lines forward or backward.
@@ -565,6 +586,7 @@ func (v *view) insert_rune(r rune) {
 	v.insert(v.loc.cursor_line, v.loc.cursor_boffset, data[:len])
 	v.move_cursor_to(v.loc.cursor_line, v.loc.cursor_line_num,
 		v.loc.cursor_boffset+len)
+	v.dirty = true
 }
 
 // If at the EOL, simply insert a new line, otherwise move contents of the
@@ -583,7 +605,7 @@ func (v *view) new_line() {
 		nl := v.insert_line(line)
 		v.move_cursor_to(nl, v.loc.cursor_line_num+1, 0)
 	}
-	v.buf.undo.finalize_action_group(v)
+	v.dirty = true
 }
 
 // If at the beginning of the line, move contents of the current line to the end
@@ -608,14 +630,14 @@ func (v *view) delete_rune_backward() {
 		}
 		v.move_cursor_to(line.prev, v.loc.cursor_line_num-1,
 			len(line.prev.data)-len(data))
-		v.buf.undo.finalize_action_group(v)
+		v.dirty = true
 		return
 	}
 
 	_, rlen := utf8.DecodeLastRune(line.data[:bo])
 	v.delete(line, bo-rlen, rlen)
 	v.move_cursor_to(line, v.loc.cursor_line_num, bo-rlen)
-	v.buf.undo.finalize_action_group(v)
+	v.dirty = true
 }
 
 // If at the EOL, move contents of the next line to the end of the current line,
@@ -640,13 +662,13 @@ func (v *view) delete_rune() {
 		if data != nil {
 			v.insert(line, len(line.data), data)
 		}
-		v.buf.undo.finalize_action_group(v)
+		v.dirty = true
 		return
 	}
 
 	_, rlen := utf8.DecodeRune(line.data[bo:])
 	v.delete(line, bo, rlen)
-	v.buf.undo.finalize_action_group(v)
+	v.dirty = true
 }
 
 // If not at the EOL, remove contents of the current line from the cursor to the
@@ -657,7 +679,7 @@ func (v *view) kill_line() {
 	if bo < len(line.data) {
 		// kill data from the cursor to the EOL
 		v.delete(line, bo, len(line.data)-bo)
-		v.buf.undo.finalize_action_group(v)
+		v.dirty = true
 		return
 	}
 	v.delete_rune()
@@ -952,6 +974,7 @@ func (a *action) do(v *view, what action_type) {
 			p.next = n
 		}
 	}
+	v.dirty = true
 }
 
 type action_group struct {
