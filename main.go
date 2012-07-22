@@ -1159,20 +1159,21 @@ func (u *undo) dump_history() {
 }
 
 //----------------------------------------------------------------------------
-// godit
-//
-// Main top-level structure, that handles views composition, command line and
-// input messaging. Also it's the spot where keyboard macros are implemented.
-// ----------------------------------------------------------------------------
+// view_tree
+//----------------------------------------------------------------------------
 
 type view_tree struct {
-	// I'm wasting a bit of space here, but who cares
+	// At the same time only one of these groups can be valid:
+	// 1) 'left', 'right' and 'split'
+	// 2) 'top', 'bottom' and 'split'
+	// 3) 'leaf'
 	left *view_tree
 	top *view_tree
 	right *view_tree
 	bottom *view_tree
-	split float32
 	leaf *view
+	split float32
+	pos tulib.Rect // updated with 'resize' call
 }
 
 func new_view_tree_leaf(v *view) *view_tree {
@@ -1218,39 +1219,45 @@ func (v *view_tree) redraw() {
 	}
 }
 
-func (v *view_tree) resize(w, h int) {
+func (v *view_tree) resize(pos tulib.Rect) {
+	v.pos = pos
 	if v.leaf != nil {
-		v.leaf.resize(w, h)
+		v.leaf.resize(pos.Width, pos.Height)
 		return
 	}
 
 	if v.left != nil {
 		// horizontal split, use 'w'
+		w := pos.Width
 		w-- // reserve one line for splitter
 		lw := int(float32(w) * v.split)
 		rw := w - lw
-		v.left.resize(lw, h)
-		v.right.resize(rw, h)
+		v.left.resize(tulib.Rect{pos.X, pos.Y, lw, pos.Height})
+		v.right.resize(tulib.Rect{pos.X+lw+1, pos.Y, rw, pos.Height})
 	} else {
 		// vertical split, use 'h', no need to reserve one line for
 		// splitter, because splitters are part of the buffer's output
 		// (their status bars act like a splitter)
+		h := pos.Height
 		th := int(float32(h) * v.split)
 		bh := h - th
-		v.top.resize(w, th)
-		v.bottom.resize(w, bh)
+		v.top.resize(tulib.Rect{pos.X, pos.Y, pos.Width, th})
+		v.bottom.resize(tulib.Rect{pos.X, pos.Y+th, pos.Width, bh})
 	}
 }
+
+//----------------------------------------------------------------------------
+// godit
+//
+// Main top-level structure, that handles views composition, command line and
+// input messaging. Also it's the spot where keyboard macros are implemented.
+//----------------------------------------------------------------------------
 
 type godit struct {
 	uibuf tulib.Buffer
 	active *view_tree // this one is always a leaf node
 	views *view_tree // a root node
 	buffers []*buffer
-
-	// updated after 'composite' call
-	last_cursor_x int
-	last_cursor_y int
 }
 
 func new_godit() *godit {
@@ -1258,8 +1265,6 @@ func new_godit() *godit {
 	g.views = new_view_tree_leaf(new_view(1, 1))
 	g.active = g.views
 	g.buffers = make([]*buffer, 0, 20)
-	g.last_cursor_x = -1
-	g.last_cursor_y = -1
 	g.resize()
 	return g
 }
@@ -1276,7 +1281,7 @@ func (g *godit) split_vertically() {
 
 func (g *godit) resize() {
 	g.uibuf = tulib.TermboxBuffer()
-	g.views.resize(g.uibuf.Width, g.uibuf.Height)
+	g.views.resize(g.uibuf.Rect)
 }
 
 func (g *godit) open_file(filename string) {
@@ -1291,52 +1296,35 @@ func (g *godit) open_file(filename string) {
 
 func (g *godit) redraw() {
 	g.views.redraw()
+	g.redraw_recursive(g.views)
 }
 
-func (g *godit) composite() {
-	g.composite_recursive(g.views, g.uibuf.Rect)
-}
-
-func (g *godit) full_redraw() {
-	g.redraw()
-	g.composite()
-}
-
-func (g *godit) cursor_position() (int, int) {
-	return g.last_cursor_x, g.last_cursor_y
-}
-
-func (g *godit) composite_recursive(v *view_tree, r tulib.Rect) {
+func (g *godit) redraw_recursive(v *view_tree) {
 	if v.leaf != nil {
-		if v == g.active {
-			// if this is an active leaf node, update cursor position
-			x, y := v.leaf.cursor_position()
-			g.last_cursor_x = r.X + x
-			g.last_cursor_y = r.Y + y
-		}
-		g.uibuf.Blit(r, 0, 0, &v.leaf.uibuf)
+		g.uibuf.Blit(v.pos, 0, 0, &v.leaf.uibuf)
 		return
 	}
 
 	if v.left != nil {
-		// left and right, recurse and draw a separator
-		w := r.Width - 1
-		lw := int(float32(w) * v.split)
-		rw := w - lw
-		g.composite_recursive(v.left, tulib.Rect{r.X, r.Y, lw, r.Height})
-		g.composite_recursive(v.right, tulib.Rect{r.X+lw+1, r.Y, rw, r.Height})
-		g.uibuf.Fill(tulib.Rect{r.X+lw, r.Y, 1, r.Height}, termbox.Cell{
+		g.redraw_recursive(v.left)
+		g.redraw_recursive(v.right)
+		splitter := v.right.pos
+		splitter.X -= 1
+		splitter.Width = 1
+		g.uibuf.Fill(splitter, termbox.Cell{
 			Fg: termbox.AttrReverse,
 			Bg: termbox.AttrReverse,
 			Ch: '│',
 		})
 	} else {
-		h := r.Height
-		th := int(float32(h) * v.split)
-		bh := h - th
-		g.composite_recursive(v.top, tulib.Rect{r.X, r.Y, r.Width, th})
-		g.composite_recursive(v.bottom, tulib.Rect{r.X, r.Y+th, r.Width, bh})
+		g.redraw_recursive(v.top)
+		g.redraw_recursive(v.bottom)
 	}
+}
+
+func (g *godit) cursor_position() (int, int) {
+	x, y := g.active.leaf.cursor_position()
+	return g.active.pos.X + x, g.active.pos.Y + y
 }
 
 func handle_alt_ch(ch rune, v *view) {
@@ -1418,13 +1406,13 @@ func (g *godit) handle_event(ev *termbox.Event) bool {
 			v.insert_rune(ev.Ch)
 		}
 
-		g.full_redraw()
+		g.redraw()
 		termbox.SetCursor(g.cursor_position())
 		termbox.Flush()
 	case termbox.EventResize:
 		termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
 		g.resize()
-		g.full_redraw()
+		g.redraw()
 		termbox.SetCursor(g.cursor_position())
 		termbox.Flush()
 	}
@@ -1461,7 +1449,7 @@ func main() {
 
 	godit := new_godit()
 	godit.open_file(os.Args[1])
-	godit.full_redraw()
+	godit.redraw()
 	termbox.SetCursor(godit.cursor_position())
 	termbox.Flush()
 
