@@ -126,6 +126,20 @@ func (v *view) width() int {
 	return v.uibuf.Width
 }
 
+// returns:
+// -1 if the line is somewhere above the view
+//  0 if the line is in the view
+// +1 if the line is somewhere below the view
+func (v *view) in_view(line_num int) int {
+	if line_num < v.loc.top_line_num {
+		return -1
+	}
+	if line_num >= v.loc.top_line_num + v.height() {
+		return 1
+	}
+	return 0
+}
+
 // This function is similar to what happens inside 'redraw', but it contains a
 // certain amount of specific code related to 'loc.line_voffset'. You shouldn't
 // use it directly, call 'redraw' instead.
@@ -560,30 +574,31 @@ func (v *view) finalize_action_group() {
 }
 
 // Shortcut for v.buf.undo.insert(v, ...)
-func (v *view) insert(line *line, offset int, data []byte) {
-	v.buf.undo.insert(v, line, offset, data)
+func (v *view) insert(line *line, line_num, offset int, data []byte) {
+	v.buf.undo.insert(v, line, line_num, offset, data)
 }
 
 // Shortcut for v.buf.undo.delete(v, ...)
-func (v *view) delete(line *line, offset int, nbytes int) {
-	v.buf.undo.delete(v, line, offset, nbytes)
+func (v *view) delete(line *line, line_num, offset, nbytes int) {
+	v.buf.undo.delete(v, line, line_num, offset, nbytes)
 }
 
 // Shortcut for v.buf.undo.insert_line(v, ...)
-func (v *view) insert_line(after *line) *line {
-	return v.buf.undo.insert_line(v, after)
+func (v *view) insert_line(after *line, line_num int) *line {
+	return v.buf.undo.insert_line(v, after, line_num)
 }
 
 // Shortcut for v.buf.undo.delete_line(v, ...)
-func (v *view) delete_line(line *line) {
-	v.buf.undo.delete_line(v, line)
+func (v *view) delete_line(line *line, line_num int) {
+	v.buf.undo.delete_line(v, line, line_num)
 }
 
 // Insert a rune 'r' at the current cursor position, advance cursor one character forward.
 func (v *view) insert_rune(r rune) {
 	var data [utf8.UTFMax]byte
 	len := utf8.EncodeRune(data[:], r)
-	v.insert(v.loc.cursor_line, v.loc.cursor_boffset, data[:len])
+	v.insert(v.loc.cursor_line, v.loc.cursor_line_num,
+		v.loc.cursor_boffset, data[:len])
 	v.move_cursor_to(v.loc.cursor_line, v.loc.cursor_line_num,
 		v.loc.cursor_boffset+len)
 	v.dirty = true
@@ -595,15 +610,16 @@ func (v *view) insert_rune(r rune) {
 func (v *view) new_line() {
 	bo := v.loc.cursor_boffset
 	line := v.loc.cursor_line
+	line_num := v.loc.cursor_line_num
 	if bo < len(line.data) {
 		data := copy_byte_slice(line.data, bo, len(line.data))
-		v.delete(line, bo, len(data))
-		nl := v.insert_line(line)
-		v.insert(nl, 0, data)
-		v.move_cursor_to(nl, v.loc.cursor_line_num+1, 0)
+		v.delete(line, line_num, bo, len(data))
+		nl := v.insert_line(line, line_num+1)
+		v.insert(nl, line_num+1, 0, data)
+		v.move_cursor_to(nl, line_num+1, 0)
 	} else {
-		nl := v.insert_line(line)
-		v.move_cursor_to(nl, v.loc.cursor_line_num+1, 0)
+		nl := v.insert_line(line, line_num+1)
+		v.move_cursor_to(nl, line_num+1, 0)
 	}
 	v.dirty = true
 }
@@ -613,6 +629,7 @@ func (v *view) new_line() {
 func (v *view) delete_rune_backward() {
 	bo := v.loc.cursor_boffset
 	line := v.loc.cursor_line
+	line_num := v.loc.cursor_line_num
 	if bo == 0 {
 		if line.prev == nil {
 			// beginning of the file
@@ -622,21 +639,20 @@ func (v *view) delete_rune_backward() {
 		var data []byte
 		if len(line.data) > 0 {
 			data = copy_byte_slice(line.data, 0, len(line.data))
-			v.delete(line, 0, len(line.data))
+			v.delete(line, line_num, 0, len(line.data))
 		}
-		v.delete_line(line)
+		v.delete_line(line, line_num)
 		if data != nil {
-			v.insert(line.prev, len(line.prev.data), data)
+			v.insert(line.prev, line_num-1, len(line.prev.data), data)
 		}
-		v.move_cursor_to(line.prev, v.loc.cursor_line_num-1,
-			len(line.prev.data)-len(data))
+		v.move_cursor_to(line.prev, line_num-1, len(line.prev.data)-len(data))
 		v.dirty = true
 		return
 	}
 
 	_, rlen := utf8.DecodeLastRune(line.data[:bo])
-	v.delete(line, bo-rlen, rlen)
-	v.move_cursor_to(line, v.loc.cursor_line_num, bo-rlen)
+	v.delete(line, line_num, bo-rlen, rlen)
+	v.move_cursor_to(line, line_num, bo-rlen)
 	v.dirty = true
 }
 
@@ -646,6 +662,7 @@ func (v *view) delete_rune_backward() {
 func (v *view) delete_rune() {
 	bo := v.loc.cursor_boffset
 	line := v.loc.cursor_line
+	line_num := v.loc.cursor_line_num
 	if bo == len(line.data) {
 		if line.next == nil {
 			// end of the file
@@ -656,18 +673,18 @@ func (v *view) delete_rune() {
 		if len(line.next.data) > 0 {
 			data = copy_byte_slice(line.next.data, 0,
 				len(line.next.data))
-			v.delete(line.next, 0, len(line.next.data))
+			v.delete(line.next, line_num + 1, 0, len(line.next.data))
 		}
-		v.delete_line(line.next)
+		v.delete_line(line.next, line_num + 1)
 		if data != nil {
-			v.insert(line, len(line.data), data)
+			v.insert(line, line_num, len(line.data), data)
 		}
 		v.dirty = true
 		return
 	}
 
 	_, rlen := utf8.DecodeRune(line.data[bo:])
-	v.delete(line, bo, rlen)
+	v.delete(line, line_num, bo, rlen)
 	v.dirty = true
 }
 
@@ -676,9 +693,10 @@ func (v *view) delete_rune() {
 func (v *view) kill_line() {
 	bo := v.loc.cursor_boffset
 	line := v.loc.cursor_line
+	line_num := v.loc.cursor_line_num
 	if bo < len(line.data) {
 		// kill data from the cursor to the EOL
-		v.delete(line, bo, len(line.data)-bo)
+		v.delete(line, line_num, bo, len(line.data)-bo)
 		v.dirty = true
 		return
 	}
@@ -871,6 +889,15 @@ func (b *buffer) delete_view(v *view) {
 	}
 }
 
+func (b *buffer) other_views(v *view, cb func(*view)) {
+	for _, ov := range b.views {
+		if v == ov {
+			continue
+		}
+		cb(ov)
+	}
+}
+
 //----------------------------------------------------------------------------
 // undo
 //----------------------------------------------------------------------------
@@ -885,10 +912,11 @@ const (
 )
 
 type action struct {
-	what   action_type
-	data   []byte
-	offset int
-	line   *line
+	what     action_type
+	data     []byte
+	offset   int
+	line     *line
+	line_num int
 }
 
 func (a *action) try_merge(b *action) bool {
@@ -934,16 +962,13 @@ func (a *action) do(v *view, what action_type) {
 		copy(d[a.offset+len(a.data):], d[a.offset:])
 		copy(d[a.offset:], a.data)
 		a.line.data = d
-		// TODO: invalidate cursor from all the views of the buffer
-		// except 'v'
 	case action_delete:
 		d := a.line.data
 		copy(d[a.offset:], d[a.offset+len(a.data):])
 		d = d[:len(d)-len(a.data)]
 		a.line.data = d
-		// TODO: invalidate cursor from all the views of the buffer
-		// except 'v'
 	case action_insert_line:
+		v.buf.lines_n++
 		p := a.line.prev
 		if p == nil {
 			n := v.buf.first_line
@@ -960,13 +985,9 @@ func (a *action) do(v *view, what action_type) {
 			}
 		}
 	case action_delete_line:
+		v.buf.lines_n--
 		p := a.line.prev
 		n := a.line.next
-		if p == nil && n == nil {
-			// impossible to remove the last line
-			break
-		}
-
 		if n != nil {
 			n.prev = p
 		}
@@ -1085,47 +1106,51 @@ func (u *undo) append(a *action) {
 	u.cur.actions = append(u.cur.actions, *a)
 }
 
-func (u *undo) insert(v *view, line *line, offset int, data []byte) {
+func (u *undo) insert(v *view, line *line, line_num int, offset int, data []byte) {
 	u.maybe_next_action_group(v)
 	a := action{
-		what:   action_insert,
-		data:   data,
-		offset: offset,
-		line:   line,
+		what:     action_insert,
+		data:     data,
+		offset:   offset,
+		line:     line,
+		line_num: line_num,
 	}
 	a.apply(v)
 	u.append(&a)
 }
 
-func (u *undo) delete(v *view, line *line, offset int, nbytes int) {
+func (u *undo) delete(v *view, line *line, line_num int, offset int, nbytes int) {
 	u.maybe_next_action_group(v)
 	d := copy_byte_slice(line.data, offset, offset+nbytes)
 	a := action{
-		what:   action_delete,
-		data:   d,
-		offset: offset,
-		line:   line,
+		what:     action_delete,
+		data:     d,
+		offset:   offset,
+		line:     line,
+		line_num: line_num,
 	}
 	a.apply(v)
 	u.append(&a)
 }
 
-func (u *undo) insert_line(v *view, after *line) *line {
+func (u *undo) insert_line(v *view, after *line, line_num int) *line {
 	u.maybe_next_action_group(v)
 	a := action{
-		what: action_insert_line,
-		line: &line{prev: after},
+		what:     action_insert_line,
+		line:     &line{prev: after},
+		line_num: line_num,
 	}
 	a.apply(v)
 	u.append(&a)
 	return a.line
 }
 
-func (u *undo) delete_line(v *view, line *line) {
+func (u *undo) delete_line(v *view, line *line, line_num int) {
 	u.maybe_next_action_group(v)
 	a := action{
-		what: action_delete_line,
-		line: line,
+		what:     action_delete_line,
+		line:     line,
+		line_num: line_num,
 	}
 	a.apply(v)
 	u.append(&a)
@@ -1167,13 +1192,13 @@ type view_tree struct {
 	// 1) 'left', 'right' and 'split'
 	// 2) 'top', 'bottom' and 'split'
 	// 3) 'leaf'
-	left *view_tree
-	top *view_tree
-	right *view_tree
+	left   *view_tree
+	top    *view_tree
+	right  *view_tree
 	bottom *view_tree
-	leaf *view
-	split float32
-	pos tulib.Rect // updated with 'resize' call
+	leaf   *view
+	split  float32
+	pos    tulib.Rect // updated with 'resize' call
 }
 
 func new_view_tree_leaf(v *view) *view_tree {
@@ -1187,9 +1212,9 @@ func (v *view_tree) split_vertically() {
 	bottom := new_view(1, 1)
 	bottom.attach(top.buf)
 	*v = view_tree{
-		top: new_view_tree_leaf(top),
+		top:    new_view_tree_leaf(top),
 		bottom: new_view_tree_leaf(bottom),
-		split: 0.5,
+		split:  0.5,
 	}
 }
 
@@ -1198,7 +1223,7 @@ func (v *view_tree) split_horizontally() {
 	right := new_view(1, 1)
 	right.attach(left.buf)
 	*v = view_tree{
-		left: new_view_tree_leaf(left),
+		left:  new_view_tree_leaf(left),
 		right: new_view_tree_leaf(right),
 		split: 0.5,
 	}
@@ -1233,7 +1258,7 @@ func (v *view_tree) resize(pos tulib.Rect) {
 		lw := int(float32(w) * v.split)
 		rw := w - lw
 		v.left.resize(tulib.Rect{pos.X, pos.Y, lw, pos.Height})
-		v.right.resize(tulib.Rect{pos.X+lw+1, pos.Y, rw, pos.Height})
+		v.right.resize(tulib.Rect{pos.X + lw + 1, pos.Y, rw, pos.Height})
 	} else {
 		// vertical split, use 'h', no need to reserve one line for
 		// splitter, because splitters are part of the buffer's output
@@ -1242,7 +1267,7 @@ func (v *view_tree) resize(pos tulib.Rect) {
 		th := int(float32(h) * v.split)
 		bh := h - th
 		v.top.resize(tulib.Rect{pos.X, pos.Y, pos.Width, th})
-		v.bottom.resize(tulib.Rect{pos.X, pos.Y+th, pos.Width, bh})
+		v.bottom.resize(tulib.Rect{pos.X, pos.Y + th, pos.Width, bh})
 	}
 }
 
@@ -1254,9 +1279,9 @@ func (v *view_tree) resize(pos tulib.Rect) {
 //----------------------------------------------------------------------------
 
 type godit struct {
-	uibuf tulib.Buffer
-	active *view_tree // this one is always a leaf node
-	views *view_tree // a root node
+	uibuf   tulib.Buffer
+	active  *view_tree // this one is always a leaf node
+	views   *view_tree // a root node
 	buffers []*buffer
 }
 
