@@ -565,36 +565,134 @@ func (v *view) maybe_move_view_n_lines(n int) {
 	}
 }
 
-// Shortcut for v.buf.undo.finalize_action_group(v)
+func (v *view) maybe_next_action_group() {
+	u := &v.buf.undo
+	if u.cur.next == nil {
+		// no need to move
+		return
+	}
+
+	prev := u.cur
+	u.cur = u.cur.next
+	u.cur.prev = prev
+	u.cur.next = nil
+	u.cur.actions = nil
+	u.cur.before_cursor_line = v.loc.cursor_line
+	u.cur.before_cursor_line_num = v.loc.cursor_line_num
+	u.cur.before_cursor_boffset = v.loc.cursor_boffset
+}
+
 func (v *view) finalize_action_group() {
-	v.buf.undo.finalize_action_group(v)
+	u := &v.buf.undo
+	// finalize only if we're at the tip of the undo history, this function
+	// will be called mainly after each cursor movement and actions alike
+	// (that are supposed to finalize action group)
+	if u.cur.next == nil {
+		u.cur.next = new(action_group)
+		u.cur.after_cursor_line = v.loc.cursor_line
+		u.cur.after_cursor_line_num = v.loc.cursor_line_num
+		u.cur.after_cursor_boffset = v.loc.cursor_boffset
+	}
 }
 
-// Shortcut for v.buf.undo.insert(v, ...)
-func (v *view) insert(line *line, line_num, offset int, data []byte) {
-	v.buf.undo.insert(v, line, line_num, offset, data)
+func (v *view) undo() {
+	u := &v.buf.undo
+	if u.cur.prev == nil {
+		// we're at the sentinel, no more things to undo
+		return
+	}
+
+	// undo action causes finalization, always
+	v.finalize_action_group()
+
+	// undo invariant tells us 'len(u.cur.actions) != 0' in case if this is
+	// not a sentinel, revert the actions in the current action group
+	for i := len(u.cur.actions) - 1; i >= 0; i-- {
+		a := &u.cur.actions[i]
+		a.revert(v)
+	}
+	v.move_cursor_to(u.cur.before_cursor_line, u.cur.before_cursor_line_num,
+		u.cur.before_cursor_boffset)
+	u.cur = u.cur.prev
 }
 
-// Shortcut for v.buf.undo.delete(v, ...)
-func (v *view) delete(line *line, line_num, offset, nbytes int) {
-	v.buf.undo.delete(v, line, line_num, offset, nbytes)
+func (v *view) redo() {
+	u := &v.buf.undo
+	if u.cur.next == nil {
+		// open group, obviously, can't move forward
+		return
+	}
+	if len(u.cur.next.actions) == 0 {
+		// last finalized group, moving to the next group breaks the
+		// invariant and doesn't make sense (nothing to redo)
+		return
+	}
+
+	// move one entry forward, and redo all its actions
+	u.cur = u.cur.next
+	for i := range u.cur.actions {
+		a := &u.cur.actions[i]
+		a.apply(v)
+	}
+	v.move_cursor_to(u.cur.after_cursor_line, u.cur.after_cursor_line_num,
+		u.cur.after_cursor_boffset)
 }
 
-// Shortcut for v.buf.undo.insert_line(v, ...)
-func (v *view) insert_line(after *line, line_num int) *line {
-	return v.buf.undo.insert_line(v, after, line_num)
+func (v *view) action_insert(line *line, line_num, offset int, data []byte) {
+	v.maybe_next_action_group()
+	a := action{
+		what:     action_insert,
+		data:     data,
+		offset:   offset,
+		line:     line,
+		line_num: line_num,
+	}
+	a.apply(v)
+	v.buf.undo.append(&a)
 }
 
-// Shortcut for v.buf.undo.delete_line(v, ...)
-func (v *view) delete_line(line *line, line_num int) {
-	v.buf.undo.delete_line(v, line, line_num)
+func (v *view) action_delete(line *line, line_num, offset, nbytes int) {
+	v.maybe_next_action_group()
+	d := copy_byte_slice(line.data, offset, offset+nbytes)
+	a := action{
+		what:     action_delete,
+		data:     d,
+		offset:   offset,
+		line:     line,
+		line_num: line_num,
+	}
+	a.apply(v)
+	v.buf.undo.append(&a)
+}
+
+func (v *view) action_insert_line(after *line, line_num int) *line {
+	v.maybe_next_action_group()
+	a := action{
+		what:     action_insert_line,
+		line:     &line{prev: after},
+		line_num: line_num,
+	}
+	a.apply(v)
+	v.buf.undo.append(&a)
+	return a.line
+}
+
+func (v *view) action_delete_line(line *line, line_num int) {
+	v.maybe_next_action_group()
+	a := action{
+		what:     action_delete_line,
+		line:     line,
+		line_num: line_num,
+	}
+	a.apply(v)
+	v.buf.undo.append(&a)
 }
 
 // Insert a rune 'r' at the current cursor position, advance cursor one character forward.
 func (v *view) insert_rune(r rune) {
 	var data [utf8.UTFMax]byte
 	len := utf8.EncodeRune(data[:], r)
-	v.insert(v.loc.cursor_line, v.loc.cursor_line_num,
+	v.action_insert(v.loc.cursor_line, v.loc.cursor_line_num,
 		v.loc.cursor_boffset, data[:len])
 	v.move_cursor_to(v.loc.cursor_line, v.loc.cursor_line_num,
 		v.loc.cursor_boffset+len)
@@ -610,12 +708,12 @@ func (v *view) new_line() {
 	line_num := v.loc.cursor_line_num
 	if bo < len(line.data) {
 		data := copy_byte_slice(line.data, bo, len(line.data))
-		v.delete(line, line_num, bo, len(data))
-		nl := v.insert_line(line, line_num+1)
-		v.insert(nl, line_num+1, 0, data)
+		v.action_delete(line, line_num, bo, len(data))
+		nl := v.action_insert_line(line, line_num+1)
+		v.action_insert(nl, line_num+1, 0, data)
 		v.move_cursor_to(nl, line_num+1, 0)
 	} else {
-		nl := v.insert_line(line, line_num+1)
+		nl := v.action_insert_line(line, line_num+1)
 		v.move_cursor_to(nl, line_num+1, 0)
 	}
 	v.dirty = true
@@ -636,11 +734,11 @@ func (v *view) delete_rune_backward() {
 		var data []byte
 		if len(line.data) > 0 {
 			data = copy_byte_slice(line.data, 0, len(line.data))
-			v.delete(line, line_num, 0, len(line.data))
+			v.action_delete(line, line_num, 0, len(line.data))
 		}
-		v.delete_line(line, line_num)
+		v.action_delete_line(line, line_num)
 		if data != nil {
-			v.insert(line.prev, line_num-1, len(line.prev.data), data)
+			v.action_insert(line.prev, line_num-1, len(line.prev.data), data)
 		}
 		v.move_cursor_to(line.prev, line_num-1, len(line.prev.data)-len(data))
 		v.dirty = true
@@ -648,7 +746,7 @@ func (v *view) delete_rune_backward() {
 	}
 
 	_, rlen := utf8.DecodeLastRune(line.data[:bo])
-	v.delete(line, line_num, bo-rlen, rlen)
+	v.action_delete(line, line_num, bo-rlen, rlen)
 	v.move_cursor_to(line, line_num, bo-rlen)
 	v.dirty = true
 }
@@ -670,18 +768,18 @@ func (v *view) delete_rune() {
 		if len(line.next.data) > 0 {
 			data = copy_byte_slice(line.next.data, 0,
 				len(line.next.data))
-			v.delete(line.next, line_num+1, 0, len(line.next.data))
+			v.action_delete(line.next, line_num+1, 0, len(line.next.data))
 		}
-		v.delete_line(line.next, line_num+1)
+		v.action_delete_line(line.next, line_num+1)
 		if data != nil {
-			v.insert(line, line_num, len(line.data), data)
+			v.action_insert(line, line_num, len(line.data), data)
 		}
 		v.dirty = true
 		return
 	}
 
 	_, rlen := utf8.DecodeRune(line.data[bo:])
-	v.delete(line, line_num, bo, rlen)
+	v.action_delete(line, line_num, bo, rlen)
 	v.dirty = true
 }
 
@@ -693,7 +791,7 @@ func (v *view) kill_line() {
 	line_num := v.loc.cursor_line_num
 	if bo < len(line.data) {
 		// kill data from the cursor to the EOL
-		v.delete(line, line_num, bo, len(line.data)-bo)
+		v.action_delete(line, line_num, bo, len(line.data)-bo)
 		v.dirty = true
 		return
 	}
@@ -1162,75 +1260,6 @@ func (u *undo) init() {
 	// maintain an invariant, where 'u.cur' is a sentinel or is not empty
 }
 
-func (u *undo) maybe_next_action_group(v *view) {
-	// no need to move
-	if u.cur.next == nil {
-		return
-	}
-
-	prev := u.cur
-	u.cur = u.cur.next
-	u.cur.prev = prev
-	u.cur.next = nil
-	u.cur.actions = nil
-	u.cur.before_cursor_line = v.loc.cursor_line
-	u.cur.before_cursor_line_num = v.loc.cursor_line_num
-	u.cur.before_cursor_boffset = v.loc.cursor_boffset
-}
-
-func (u *undo) finalize_action_group(v *view) {
-	// finalize only if we're at the tip of the undo history, this function
-	// will be called mainly after each cursor movement and actions alike
-	// (that are supposed to finalize action group)
-	if u.cur.next == nil {
-		u.cur.next = new(action_group)
-		u.cur.after_cursor_line = v.loc.cursor_line
-		u.cur.after_cursor_line_num = v.loc.cursor_line_num
-		u.cur.after_cursor_boffset = v.loc.cursor_boffset
-	}
-}
-
-func (u *undo) undo(v *view) {
-	if u.cur.prev == nil {
-		// we're at the sentinel, no more things to undo
-		return
-	}
-
-	// undo action causes finalization, always
-	u.finalize_action_group(v)
-
-	// undo invariant tells us 'len(u.cur.actions) != 0' in case if this is
-	// not a sentinel, revert the actions in the current action group
-	for i := len(u.cur.actions) - 1; i >= 0; i-- {
-		a := &u.cur.actions[i]
-		a.revert(v)
-	}
-	v.move_cursor_to(u.cur.before_cursor_line, u.cur.before_cursor_line_num,
-		u.cur.before_cursor_boffset)
-	u.cur = u.cur.prev
-}
-
-func (u *undo) redo(v *view) {
-	if u.cur.next == nil {
-		// open group, obviously, can't move forward
-		return
-	}
-	if len(u.cur.next.actions) == 0 {
-		// last finalized group, moving to the next group breaks the
-		// invariant and doesn't make sense (nothing to redo)
-		return
-	}
-
-	// move one entry forward, and redo all its actions
-	u.cur = u.cur.next
-	for i := range u.cur.actions {
-		a := &u.cur.actions[i]
-		a.apply(v)
-	}
-	v.move_cursor_to(u.cur.after_cursor_line, u.cur.after_cursor_line_num,
-		u.cur.after_cursor_boffset)
-}
-
 func (u *undo) append(a *action) {
 	if len(u.cur.actions) != 0 {
 		// Oh, we have something in the group already, let's try to
@@ -1241,56 +1270,6 @@ func (u *undo) append(a *action) {
 		}
 	}
 	u.cur.actions = append(u.cur.actions, *a)
-}
-
-func (u *undo) insert(v *view, line *line, line_num int, offset int, data []byte) {
-	u.maybe_next_action_group(v)
-	a := action{
-		what:     action_insert,
-		data:     data,
-		offset:   offset,
-		line:     line,
-		line_num: line_num,
-	}
-	a.apply(v)
-	u.append(&a)
-}
-
-func (u *undo) delete(v *view, line *line, line_num int, offset int, nbytes int) {
-	u.maybe_next_action_group(v)
-	d := copy_byte_slice(line.data, offset, offset+nbytes)
-	a := action{
-		what:     action_delete,
-		data:     d,
-		offset:   offset,
-		line:     line,
-		line_num: line_num,
-	}
-	a.apply(v)
-	u.append(&a)
-}
-
-func (u *undo) insert_line(v *view, after *line, line_num int) *line {
-	u.maybe_next_action_group(v)
-	a := action{
-		what:     action_insert_line,
-		line:     &line{prev: after},
-		line_num: line_num,
-	}
-	a.apply(v)
-	u.append(&a)
-	return a.line
-}
-
-func (u *undo) delete_line(v *view, line *line, line_num int) {
-	u.maybe_next_action_group(v)
-	a := action{
-		what:     action_delete_line,
-		line:     line,
-		line_num: line_num,
-	}
-	a.apply(v)
-	u.append(&a)
 }
 
 func (u *undo) dump_history() {
@@ -1531,9 +1510,9 @@ func (g *godit) handle_command(cmd vcommand, arg rune) {
 	case vcommand_kill_line:
 		v.kill_line()
 	case vcommand_undo:
-		v.buf.undo.undo(v)
+		v.undo()
 	case vcommand_redo:
-		v.buf.undo.redo(v)
+		v.redo()
 	}
 }
 
