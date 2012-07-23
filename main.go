@@ -1084,34 +1084,48 @@ func (a *action) do(v *view, what action_type) {
 		a.line.data = d
 		v.on_delete(a.line, a.line_num)
 	case action_insert_line:
+		var bi, ai *line // before insertion and after insertion lines
 		v.buf.lines_n++
-		p := a.line.prev
-		if p == nil {
-			n := v.buf.first_line
+		bi = a.line.prev
+		if bi == nil {
+			// inserting the first line
+			// bi == nil
+			// ai == v.buf.first_line
+			ai = v.buf.first_line
 			v.buf.first_line = a.line
-			a.line.prev = nil
-			a.line.next = n
 		} else {
-			n := p.next
-			p.next = a.line
-			a.line.prev = p
-			if n != nil {
-				a.line.next = n
-				n.prev = a.line
+			ai = bi.next
+			if ai == nil {
+				// inserting the last line
+				// bi == v.buf.last_line
+				// ai == nil
+				v.buf.last_line = a.line
 			}
 		}
+
+		if bi != nil {
+			bi.next = a.line
+		}
+		if ai != nil {
+			ai.prev = a.line
+		}
+		a.line.prev = bi
+		a.line.next = ai
+
 		v.on_insert_line(a.line, a.line_num)
 	case action_delete_line:
 		v.buf.lines_n--
-		p := a.line.prev
-		n := a.line.next
-		if n != nil {
-			n.prev = p
+		bi := a.line.prev
+		ai := a.line.next
+		if ai != nil {
+			ai.prev = bi
 		} else {
-			v.buf.last_line = p
+			v.buf.last_line = bi
 		}
-		if p != nil {
-			p.next = n
+		if bi != nil {
+			bi.next = ai
+		} else {
+			v.buf.first_line = ai
 		}
 		v.on_delete_line(a.line, a.line_num)
 	}
