@@ -126,18 +126,15 @@ func (v *view) width() int {
 	return v.uibuf.Width
 }
 
-// returns:
-// -1 if the line is somewhere above the view
-//  0 if the line is in the view
-// +1 if the line is somewhere below the view
-func (v *view) in_view(line_num int) int {
+// Returns true if the line number 'line_num' is in the view.
+func (v *view) in_view(line_num int) bool {
 	if line_num < v.loc.top_line_num {
-		return -1
+		return false
 	}
 	if line_num >= v.loc.top_line_num + v.height() {
-		return 1
+		return false
 	}
-	return 0
+	return true
 }
 
 // This function is similar to what happens inside 'redraw', but it contains a
@@ -703,6 +700,123 @@ func (v *view) kill_line() {
 	v.delete_rune()
 }
 
+func (v *view) restore_cursor_from_boffset() {
+	voffset, coffset := v.loc.cursor_line.voffset_coffset(v.loc.cursor_boffset)
+	v.loc.cursor_coffset = coffset
+	v.loc.cursor_voffset = voffset
+	v.loc.last_cursor_voffset = v.loc.cursor_voffset
+}
+
+func (v *view) on_insert(line *line, line_num int) {
+	v.buf.other_views(v, func(v *view) {
+		if v.in_view(line_num) {
+			v.dirty = true
+		}
+
+		if v.loc.cursor_line != line {
+			return
+		}
+
+		v.restore_cursor_from_boffset()
+		v.adjust_line_voffset()
+		// TODO dirty status bar?
+	})
+}
+
+func (v *view) on_delete(line *line, line_num int) {
+	v.buf.other_views(v, func(v *view) {
+		if v.in_view(line_num) {
+			v.dirty = true
+		}
+
+		if v.loc.cursor_line != line {
+			return
+		}
+
+		if len(line.data) < v.loc.cursor_boffset {
+			v.loc.cursor_boffset = len(line.data)
+		}
+
+		v.restore_cursor_from_boffset()
+		v.adjust_line_voffset()
+		// TODO dirty status bar?
+	})
+}
+
+func (v *view) on_insert_line(line *line, line_num int) {
+	v.buf.other_views(v, func(v *view) {
+		if v.loc.top_line_num + v.height() <= line_num {
+			// inserted line is somewhere below the view, don't care
+			return
+		}
+
+		if line_num <= v.loc.top_line_num {
+			// line was inserted somewhere before the top line, adjust it
+			v.loc.top_line_num++
+			v.loc.cursor_line_num++
+			// TODO make status bar dirty
+			return
+		}
+
+		if line_num > v.loc.cursor_line_num {
+			// line is below the top line and cursor line, but still
+			// is in the view, mark view as dirty, return
+			v.dirty = true
+			return
+		}
+
+		// line was inserted somewhere before the cursor, but
+		// after the top line, adjust it
+		v.loc.cursor_line_num++
+		v.adjust_top_line()
+		v.dirty = true
+	})
+}
+
+func (v *view) on_delete_line(line *line, line_num int) {
+	v.buf.other_views(v, func(v *view) {
+		if v.in_view(line_num) {
+			v.dirty = true
+		}
+
+		if v.loc.top_line == line {
+			if line.next != nil {
+				v.loc.top_line = line.next
+			} else {
+				v.loc.top_line = line.prev
+				v.loc.top_line_num--
+			}
+		} else if line_num < v.loc.top_line_num {
+			v.loc.top_line_num--
+			v.loc.cursor_line_num--
+			// TODO make status bar dirty
+			return
+		}
+
+		if v.loc.cursor_line == line {
+			if line.next != nil {
+				v.loc.cursor_line = line.next
+				v.loc.cursor_boffset = 0
+				v.loc.cursor_coffset = 0
+				v.loc.cursor_voffset = 0
+				v.loc.last_cursor_voffset = 0
+				// TODO: status bar dirty
+			} else {
+				v.loc.cursor_line = line.prev
+				v.loc.cursor_line_num--
+				v.loc.cursor_boffset = len(line.prev.data)
+				v.restore_cursor_from_boffset()
+				v.adjust_line_voffset()
+				v.adjust_top_line()
+				// TODO: status bar dirty
+			}
+		} else if line_num < v.loc.cursor_line_num {
+			v.loc.cursor_line_num--
+			// TODO make status bar dirty
+		}
+	})
+}
+
 //----------------------------------------------------------------------------
 // line
 //----------------------------------------------------------------------------
@@ -962,11 +1076,13 @@ func (a *action) do(v *view, what action_type) {
 		copy(d[a.offset+len(a.data):], d[a.offset:])
 		copy(d[a.offset:], a.data)
 		a.line.data = d
+		v.on_insert(a.line, a.line_num)
 	case action_delete:
 		d := a.line.data
 		copy(d[a.offset:], d[a.offset+len(a.data):])
 		d = d[:len(d)-len(a.data)]
 		a.line.data = d
+		v.on_delete(a.line, a.line_num)
 	case action_insert_line:
 		v.buf.lines_n++
 		p := a.line.prev
@@ -984,16 +1100,20 @@ func (a *action) do(v *view, what action_type) {
 				n.prev = a.line
 			}
 		}
+		v.on_insert_line(a.line, a.line_num)
 	case action_delete_line:
 		v.buf.lines_n--
 		p := a.line.prev
 		n := a.line.next
 		if n != nil {
 			n.prev = p
+		} else {
+			v.buf.last_line = p
 		}
 		if p != nil {
 			p.next = n
 		}
+		v.on_delete_line(a.line, a.line_num)
 	}
 	v.dirty = true
 }
@@ -1423,6 +1543,12 @@ func (g *godit) handle_event(ev *termbox.Event) bool {
 		case termbox.KeyF3:
 			g.split_vertically()
 			g.resize()
+		case termbox.KeyF4:
+			if g.views.left == g.active {
+				g.active = g.views.right
+			} else if g.views.right == g.active {
+				g.active = g.views.left
+			}
 		}
 
 		if ev.Mod&termbox.ModAlt != 0 {
