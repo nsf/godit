@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"fmt"
 	"github.com/nsf/termbox-go"
 	"github.com/nsf/tulib"
 	"io"
@@ -56,14 +58,28 @@ type view_location struct {
 }
 
 //----------------------------------------------------------------------------
+// dirty flag
+//----------------------------------------------------------------------------
+
+type dirty_flag int
+
+const (
+	dirty_contents dirty_flag = (1 << iota)
+	dirty_status
+
+	dirty_everything = dirty_contents | dirty_status
+)
+
+//----------------------------------------------------------------------------
 // view
 //----------------------------------------------------------------------------
 
 type view struct {
-	buf   *buffer // currently displayed buffer
-	uibuf tulib.Buffer
-	loc   view_location
-	dirty bool
+	status bytes.Buffer // temporary buffer for status bar text
+	buf    *buffer      // currently displayed buffer
+	uibuf  tulib.Buffer
+	loc    view_location
+	dirty  dirty_flag
 }
 
 func new_view(w, h int) *view {
@@ -81,7 +97,7 @@ func (v *view) attach(b *buffer) {
 	v.buf = b
 	v.loc = b.loc
 	b.add_view(v)
-	v.dirty = true
+	v.dirty = dirty_everything
 }
 
 func (v *view) detach() {
@@ -97,7 +113,7 @@ func (v *view) resize(w, h int) {
 	if v.buf != nil {
 		v.adjust_line_voffset()
 		v.adjust_top_line()
-		v.dirty = true
+		v.dirty = dirty_everything
 	}
 }
 
@@ -187,13 +203,7 @@ func (v *view) draw_cursor_line(line *line, coff int) {
 	}
 }
 
-// Redraw the current view to the 'v.uibuf'.
-func (v *view) redraw() {
-	if !v.dirty {
-		return
-	}
-	v.dirty = false
-
+func (v *view) redraw_contents() {
 	// clear the buffer
 	v.uibuf.Fill(v.uibuf.Rect, termbox.Cell{
 		Ch: ' ',
@@ -254,7 +264,9 @@ func (v *view) redraw() {
 		coff += v.uibuf.Width
 		line = line.next
 	}
+}
 
+func (v *view) redraw_status() {
 	// draw status bar
 	lp := tulib.DefaultLabelParams
 	lp.Bg = termbox.AttrReverse
@@ -264,8 +276,30 @@ func (v *view) redraw() {
 		Bg: termbox.AttrReverse,
 		Ch: '─',
 	})
+	fmt.Fprintf(&v.status, "  %s  ", v.buf.name)
 	v.uibuf.DrawLabel(tulib.Rect{3, v.height(), v.uibuf.Width, 1},
-		&lp, "  "+v.buf.name+"  ")
+		&lp, v.status.Bytes())
+
+	namel := v.status.Len()
+	lp.Fg = termbox.AttrReverse
+	v.status.Reset()
+	fmt.Fprintf(&v.status, "(%d, %d)  ", v.loc.cursor_line_num, v.loc.cursor_voffset)
+	v.uibuf.DrawLabel(tulib.Rect{3 + namel, v.height(), v.uibuf.Width, 1},
+		&lp, v.status.Bytes())
+	v.status.Reset()
+}
+
+// Redraw the current view to the 'v.uibuf'.
+func (v *view) redraw() {
+	if v.dirty & dirty_contents != 0 {
+		v.dirty &^= dirty_contents
+		v.redraw_contents()
+	}
+
+	if v.dirty & dirty_status != 0 {
+		v.dirty &^= dirty_status
+		v.redraw_status()
+	}
 }
 
 // Move top line 'n' times forward or backward.
@@ -332,7 +366,7 @@ func (v *view) adjust_cursor_line() {
 		v.loc.cursor_voffset = vo
 		v.loc.line_voffset = 0
 		v.adjust_line_voffset()
-		v.dirty = true
+		v.dirty = dirty_everything
 	}
 }
 
@@ -346,12 +380,12 @@ func (v *view) adjust_top_line() {
 
 	if top.next != nil && co >= h-vt {
 		v.move_top_line_n_times(co - (h - vt) + 1)
-		v.dirty = true
+		v.dirty = dirty_everything
 	}
 
 	if top.prev != nil && co < vt {
 		v.move_top_line_n_times(co - vt)
-		v.dirty = true
+		v.dirty = dirty_everything
 	}
 }
 
@@ -380,7 +414,7 @@ func (v *view) adjust_line_voffset() {
 
 	if v.loc.line_voffset != vo {
 		v.loc.line_voffset = vo
-		v.dirty = true
+		v.dirty = dirty_everything
 	}
 }
 
@@ -393,6 +427,7 @@ func (v *view) cursor_position() (int, int) {
 // Move cursor to the 'boffset' position in the 'line'. Obviously 'line' must be
 // from the attached buffer. If 'boffset' < 0, use 'last_cursor_voffset'.
 func (v *view) move_cursor_to(line *line, line_num int, boffset int) {
+	v.dirty |= dirty_status
 	curline := v.loc.cursor_line
 	if line != curline {
 		goto otherline
@@ -532,7 +567,7 @@ func (v *view) move_view_n_lines(n int) {
 	v.move_top_line_n_times(n)
 	v.adjust_cursor_line()
 	if prevtop != v.loc.top_line_num {
-		v.dirty = true
+		v.dirty = dirty_everything
 	}
 }
 
@@ -696,7 +731,7 @@ func (v *view) insert_rune(r rune) {
 		v.loc.cursor_boffset, data[:len])
 	v.move_cursor_to(v.loc.cursor_line, v.loc.cursor_line_num,
 		v.loc.cursor_boffset+len)
-	v.dirty = true
+	v.dirty = dirty_everything
 }
 
 // If at the EOL, simply insert a new line, otherwise move contents of the
@@ -716,7 +751,7 @@ func (v *view) new_line() {
 		nl := v.action_insert_line(line, line_num+1)
 		v.move_cursor_to(nl, line_num+1, 0)
 	}
-	v.dirty = true
+	v.dirty = dirty_everything
 }
 
 // If at the beginning of the line, move contents of the current line to the end
@@ -741,14 +776,14 @@ func (v *view) delete_rune_backward() {
 			v.action_insert(line.prev, line_num-1, len(line.prev.data), data)
 		}
 		v.move_cursor_to(line.prev, line_num-1, len(line.prev.data)-len(data))
-		v.dirty = true
+		v.dirty = dirty_everything
 		return
 	}
 
 	_, rlen := utf8.DecodeLastRune(line.data[:bo])
 	v.action_delete(line, line_num, bo-rlen, rlen)
 	v.move_cursor_to(line, line_num, bo-rlen)
-	v.dirty = true
+	v.dirty = dirty_everything
 }
 
 // If at the EOL, move contents of the next line to the end of the current line,
@@ -774,13 +809,13 @@ func (v *view) delete_rune() {
 		if data != nil {
 			v.action_insert(line, line_num, len(line.data), data)
 		}
-		v.dirty = true
+		v.dirty = dirty_everything
 		return
 	}
 
 	_, rlen := utf8.DecodeRune(line.data[bo:])
 	v.action_delete(line, line_num, bo, rlen)
-	v.dirty = true
+	v.dirty = dirty_everything
 }
 
 // If not at the EOL, remove contents of the current line from the cursor to the
@@ -792,7 +827,7 @@ func (v *view) kill_line() {
 	if bo < len(line.data) {
 		// kill data from the cursor to the EOL
 		v.action_delete(line, line_num, bo, len(line.data)-bo)
-		v.dirty = true
+		v.dirty = dirty_everything
 		return
 	}
 	v.delete_rune()
@@ -808,7 +843,7 @@ func (v *view) restore_cursor_from_boffset() {
 func (v *view) on_insert(line *line, line_num int) {
 	v.buf.other_views(v, func(v *view) {
 		if v.in_view(line_num) {
-			v.dirty = true
+			v.dirty = dirty_everything
 		}
 
 		if v.loc.cursor_line != line {
@@ -817,14 +852,14 @@ func (v *view) on_insert(line *line, line_num int) {
 
 		v.restore_cursor_from_boffset()
 		v.adjust_line_voffset()
-		// TODO dirty status bar?
+		v.dirty |= dirty_status
 	})
 }
 
 func (v *view) on_delete(line *line, line_num int) {
 	v.buf.other_views(v, func(v *view) {
 		if v.in_view(line_num) {
-			v.dirty = true
+			v.dirty = dirty_everything
 		}
 
 		if v.loc.cursor_line != line {
@@ -837,7 +872,7 @@ func (v *view) on_delete(line *line, line_num int) {
 
 		v.restore_cursor_from_boffset()
 		v.adjust_line_voffset()
-		// TODO dirty status bar?
+		v.dirty |= dirty_status
 	})
 }
 
@@ -852,14 +887,14 @@ func (v *view) on_insert_line(line *line, line_num int) {
 			// line was inserted somewhere before the top line, adjust it
 			v.loc.top_line_num++
 			v.loc.cursor_line_num++
-			// TODO make status bar dirty
+			v.dirty |= dirty_status
 			return
 		}
 
 		if line_num > v.loc.cursor_line_num {
 			// line is below the top line and cursor line, but still
 			// is in the view, mark view as dirty, return
-			v.dirty = true
+			v.dirty = dirty_everything
 			return
 		}
 
@@ -867,14 +902,14 @@ func (v *view) on_insert_line(line *line, line_num int) {
 		// after the top line, adjust it
 		v.loc.cursor_line_num++
 		v.adjust_top_line()
-		v.dirty = true
+		v.dirty = dirty_everything
 	})
 }
 
 func (v *view) on_delete_line(line *line, line_num int) {
 	v.buf.other_views(v, func(v *view) {
 		if v.in_view(line_num) {
-			v.dirty = true
+			v.dirty = dirty_everything
 		}
 
 		if v.loc.top_line == line {
@@ -887,7 +922,7 @@ func (v *view) on_delete_line(line *line, line_num int) {
 		} else if line_num < v.loc.top_line_num {
 			v.loc.top_line_num--
 			v.loc.cursor_line_num--
-			// TODO make status bar dirty
+			v.dirty |= dirty_status
 			return
 		}
 
@@ -898,7 +933,6 @@ func (v *view) on_delete_line(line *line, line_num int) {
 				v.loc.cursor_coffset = 0
 				v.loc.cursor_voffset = 0
 				v.loc.last_cursor_voffset = 0
-				// TODO: status bar dirty
 			} else {
 				v.loc.cursor_line = line.prev
 				v.loc.cursor_line_num--
@@ -906,11 +940,11 @@ func (v *view) on_delete_line(line *line, line_num int) {
 				v.restore_cursor_from_boffset()
 				v.adjust_line_voffset()
 				v.adjust_top_line()
-				// TODO: status bar dirty
 			}
+			v.dirty |= dirty_status
 		} else if line_num < v.loc.cursor_line_num {
 			v.loc.cursor_line_num--
-			// TODO make status bar dirty
+			v.dirty |= dirty_status
 		}
 	})
 }
@@ -1230,7 +1264,7 @@ func (a *action) do(v *view, what action_type) {
 		}
 		v.on_delete_line(a.line, a.line_num)
 	}
-	v.dirty = true
+	v.dirty = dirty_everything
 }
 
 type action_group struct {
@@ -1385,6 +1419,71 @@ func (v *view_tree) resize(pos tulib.Rect) {
 		v.top.resize(tulib.Rect{pos.X, pos.Y, pos.Width, th})
 		v.bottom.resize(tulib.Rect{pos.X, pos.Y + th, pos.Width, bh})
 	}
+}
+
+//----------------------------------------------------------------------------
+// view commands
+//----------------------------------------------------------------------------
+
+type vcommand_class int
+
+const (
+	vcommand_class_none vcommand_class = iota
+	vcommand_class_movement
+	vcommand_class_insertion
+	vcommand_class_deletion
+	vcommand_class_history
+)
+
+type vcommand int
+
+const (
+	// movement commands (finalize undo action group)
+	_vcommand_movement_beg vcommand = iota
+	vcommand_move_cursor_forward
+	vcommand_move_cursor_backward
+	vcommand_move_cursor_next_line
+	vcommand_move_cursor_prev_line
+	vcommand_move_cursor_beginning_of_line
+	vcommand_move_cursor_end_of_line
+	vcommand_move_cursor_beginning_of_file
+	vcommand_move_cursor_end_of_file
+	vcommand_move_view_half_forward
+	vcommand_move_view_half_backward
+	_vcommand_movement_end
+
+	// insertion commands
+	_vcommand_insertion_beg
+	vcommand_insert_rune
+	vcommand_new_line
+	_vcommand_insertion_end
+
+	// deletion commands
+	_vcommand_deletion_beg
+	vcommand_delete_rune_backward
+	vcommand_delete_rune
+	vcommand_kill_line
+	_vcommand_deletion_end
+
+	// history commands (undo/redo)
+	_vcommand_history_beg
+	vcommand_undo
+	vcommand_redo
+	_vcommand_history_end
+)
+
+func (c vcommand) class() vcommand_class {
+	switch {
+	case c > _vcommand_movement_beg && c < _vcommand_movement_end:
+		return vcommand_class_movement
+	case c > _vcommand_insertion_beg && c < _vcommand_insertion_end:
+		return vcommand_class_insertion
+	case c > _vcommand_deletion_beg && c < _vcommand_deletion_end:
+		return vcommand_class_deletion
+	case c > _vcommand_history_beg && c < _vcommand_history_end:
+		return vcommand_class_history
+	}
+	return vcommand_class_none
 }
 
 //----------------------------------------------------------------------------
@@ -1552,6 +1651,8 @@ func (g *godit) handle_event(ev *termbox.Event) bool {
 			g.handle_command(vcommand_move_view_half_backward, 0)
 		case termbox.KeyCtrlR:
 			g.handle_command(vcommand_redo, 0)
+		case termbox.KeyTab:
+			g.handle_command(vcommand_insert_rune, '\t')
 		case termbox.KeyF1:
 			g.active.leaf.buf.undo.dump_history()
 		case termbox.KeyF2:
@@ -1592,71 +1693,6 @@ func (g *godit) handle_event(ev *termbox.Event) bool {
 		termbox.Flush()
 	}
 	return true
-}
-
-//----------------------------------------------------------------------------
-// view commands
-//----------------------------------------------------------------------------
-
-type vcommand_class int
-
-const (
-	vcommand_class_none vcommand_class = iota
-	vcommand_class_movement
-	vcommand_class_insertion
-	vcommand_class_deletion
-	vcommand_class_history
-)
-
-type vcommand int
-
-const (
-	// movement commands (finalize undo action group)
-	_vcommand_movement_beg vcommand = iota
-	vcommand_move_cursor_forward
-	vcommand_move_cursor_backward
-	vcommand_move_cursor_next_line
-	vcommand_move_cursor_prev_line
-	vcommand_move_cursor_beginning_of_line
-	vcommand_move_cursor_end_of_line
-	vcommand_move_cursor_beginning_of_file
-	vcommand_move_cursor_end_of_file
-	vcommand_move_view_half_forward
-	vcommand_move_view_half_backward
-	_vcommand_movement_end
-
-	// insertion commands
-	_vcommand_insertion_beg
-	vcommand_insert_rune
-	vcommand_new_line
-	_vcommand_insertion_end
-
-	// deletion commands
-	_vcommand_deletion_beg
-	vcommand_delete_rune_backward
-	vcommand_delete_rune
-	vcommand_kill_line
-	_vcommand_deletion_end
-
-	// history commands (undo/redo)
-	_vcommand_history_beg
-	vcommand_undo
-	vcommand_redo
-	_vcommand_history_end
-)
-
-func (c vcommand) class() vcommand_class {
-	switch {
-	case c > _vcommand_movement_beg && c < _vcommand_movement_end:
-		return vcommand_class_movement
-	case c > _vcommand_insertion_beg && c < _vcommand_insertion_end:
-		return vcommand_class_insertion
-	case c > _vcommand_deletion_beg && c < _vcommand_deletion_end:
-		return vcommand_class_deletion
-	case c > _vcommand_history_beg && c < _vcommand_history_end:
-		return vcommand_class_history
-	}
-	return vcommand_class_none
 }
 
 func grow_byte_slice(s []byte, desired_cap int) []byte {
