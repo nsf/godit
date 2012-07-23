@@ -131,7 +131,7 @@ func (v *view) in_view(line_num int) bool {
 	if line_num < v.loc.top_line_num {
 		return false
 	}
-	if line_num >= v.loc.top_line_num + v.height() {
+	if line_num >= v.loc.top_line_num+v.height() {
 		return false
 	}
 	return true
@@ -670,9 +670,9 @@ func (v *view) delete_rune() {
 		if len(line.next.data) > 0 {
 			data = copy_byte_slice(line.next.data, 0,
 				len(line.next.data))
-			v.delete(line.next, line_num + 1, 0, len(line.next.data))
+			v.delete(line.next, line_num+1, 0, len(line.next.data))
 		}
-		v.delete_line(line.next, line_num + 1)
+		v.delete_line(line.next, line_num+1)
 		if data != nil {
 			v.insert(line, line_num, len(line.data), data)
 		}
@@ -745,7 +745,7 @@ func (v *view) on_delete(line *line, line_num int) {
 
 func (v *view) on_insert_line(line *line, line_num int) {
 	v.buf.other_views(v, func(v *view) {
-		if v.loc.top_line_num + v.height() <= line_num {
+		if v.loc.top_line_num+v.height() <= line_num {
 			// inserted line is somewhere below the view, don't care
 			return
 		}
@@ -1043,6 +1043,7 @@ func (a *action) try_merge(b *action) bool {
 		return false
 	}
 
+	// TODO compressing "delete_rune" actions is broken
 	switch a.what {
 	case action_insert, action_delete:
 		if a.offset+len(a.data) == b.offset {
@@ -1091,6 +1092,7 @@ func (a *action) do(v *view, what action_type) {
 			// inserting the first line
 			// bi == nil
 			// ai == v.buf.first_line
+
 			ai = v.buf.first_line
 			v.buf.first_line = a.line
 		} else {
@@ -1099,6 +1101,7 @@ func (a *action) do(v *view, what action_type) {
 				// inserting the last line
 				// bi == v.buf.last_line
 				// ai == nil
+
 				v.buf.last_line = a.line
 			}
 		}
@@ -1413,10 +1416,11 @@ func (v *view_tree) resize(pos tulib.Rect) {
 //----------------------------------------------------------------------------
 
 type godit struct {
-	uibuf   tulib.Buffer
-	active  *view_tree // this one is always a leaf node
-	views   *view_tree // a root node
-	buffers []*buffer
+	uibuf        tulib.Buffer
+	active       *view_tree // this one is always a leaf node
+	views        *view_tree // a root node
+	buffers      []*buffer
+	lastcmdclass vcommand_class
 }
 
 func new_godit() *godit {
@@ -1486,71 +1490,91 @@ func (g *godit) cursor_position() (int, int) {
 	return g.active.pos.X + x, g.active.pos.Y + y
 }
 
-func handle_alt_ch(ch rune, v *view) {
-	switch ch {
-	case 'v':
+func (g *godit) handle_command(cmd vcommand, arg rune) {
+	v := g.active.leaf
+
+	class := cmd.class()
+	if class != g.lastcmdclass {
+		g.lastcmdclass = class
 		v.finalize_action_group()
-		v.move_view_n_lines(-v.height() / 2)
-	case '<':
-		v.finalize_action_group()
+	}
+
+	switch cmd {
+	case vcommand_move_cursor_forward:
+		v.move_cursor_forward()
+	case vcommand_move_cursor_backward:
+		v.move_cursor_backward()
+	case vcommand_move_cursor_next_line:
+		v.move_cursor_next_line()
+	case vcommand_move_cursor_prev_line:
+		v.move_cursor_prev_line()
+	case vcommand_move_cursor_beginning_of_line:
+		v.move_cursor_beginning_of_line()
+	case vcommand_move_cursor_end_of_line:
+		v.move_cursor_end_of_line()
+	case vcommand_move_cursor_beginning_of_file:
 		v.move_cursor_beginning_of_file()
-	case '>':
-		v.finalize_action_group()
+	case vcommand_move_cursor_end_of_file:
 		v.move_cursor_end_of_file()
+	case vcommand_move_view_half_forward:
+		v.maybe_move_view_n_lines(v.height() / 2)
+	case vcommand_move_view_half_backward:
+		v.move_view_n_lines(-v.height() / 2)
+	case vcommand_insert_rune:
+		v.insert_rune(arg)
+	case vcommand_new_line:
+		v.new_line()
+	case vcommand_delete_rune_backward:
+		v.delete_rune_backward()
+	case vcommand_delete_rune:
+		v.delete_rune()
+	case vcommand_kill_line:
+		v.kill_line()
+	case vcommand_undo:
+		v.buf.undo.undo(v)
+	case vcommand_redo:
+		v.buf.undo.redo(v)
 	}
 }
 
 func (g *godit) handle_event(ev *termbox.Event) bool {
-	v := g.active.leaf
 	switch ev.Type {
 	case termbox.EventKey:
 		switch ev.Key {
 		case termbox.KeyCtrlX:
 			return false
 		case termbox.KeyCtrlF, termbox.KeyArrowRight:
-			v.finalize_action_group()
-			v.move_cursor_forward()
+			g.handle_command(vcommand_move_cursor_forward, 0)
 		case termbox.KeyCtrlB, termbox.KeyArrowLeft:
-			v.finalize_action_group()
-			v.move_cursor_backward()
+			g.handle_command(vcommand_move_cursor_backward, 0)
 		case termbox.KeyCtrlN, termbox.KeyArrowDown:
-			v.finalize_action_group()
-			v.move_cursor_next_line()
+			g.handle_command(vcommand_move_cursor_next_line, 0)
 		case termbox.KeyCtrlP, termbox.KeyArrowUp:
-			v.finalize_action_group()
-			v.move_cursor_prev_line()
+			g.handle_command(vcommand_move_cursor_prev_line, 0)
 		case termbox.KeyCtrlE, termbox.KeyEnd:
-			v.finalize_action_group()
-			v.move_cursor_end_of_line()
+			g.handle_command(vcommand_move_cursor_end_of_line, 0)
 		case termbox.KeyCtrlA, termbox.KeyHome:
-			v.finalize_action_group()
-			v.move_cursor_beginning_of_line()
+			g.handle_command(vcommand_move_cursor_beginning_of_line, 0)
 		case termbox.KeyCtrlV, termbox.KeyPgdn:
-			v.finalize_action_group()
-			v.maybe_move_view_n_lines(v.height() / 2)
+			g.handle_command(vcommand_move_view_half_forward, 0)
 		case termbox.KeyCtrlSlash:
-			v.buf.undo.undo(v)
+			g.handle_command(vcommand_undo, 0)
 		case termbox.KeySpace:
-			v.insert_rune(' ')
+			g.handle_command(vcommand_insert_rune, ' ')
 		case termbox.KeyEnter, termbox.KeyCtrlJ:
-			v.finalize_action_group()
-			v.new_line()
+			g.handle_command(vcommand_new_line, 0)
 		case termbox.KeyBackspace, termbox.KeyBackspace2:
-			v.finalize_action_group()
-			v.delete_rune_backward()
+			g.handle_command(vcommand_delete_rune_backward, 0)
 		case termbox.KeyDelete, termbox.KeyCtrlD:
-			v.finalize_action_group()
-			v.delete_rune()
+			g.handle_command(vcommand_delete_rune, 0)
 		case termbox.KeyCtrlK:
-			v.finalize_action_group()
-			v.kill_line()
+			g.handle_command(vcommand_kill_line, 0)
 		case termbox.KeyPgup:
-			v.finalize_action_group()
-			v.move_view_n_lines(-v.height() / 2)
+			g.handle_command(vcommand_move_view_half_backward, 0)
 		case termbox.KeyCtrlR:
-			v.buf.undo.redo(v)
+			g.handle_command(vcommand_redo, 0)
 		case termbox.KeyF1:
-			v.buf.undo.dump_history()
+			g.active.leaf.buf.undo.dump_history()
 		case termbox.KeyF2:
 			g.split_horizontally()
 			g.resize()
@@ -1566,9 +1590,16 @@ func (g *godit) handle_event(ev *termbox.Event) bool {
 		}
 
 		if ev.Mod&termbox.ModAlt != 0 {
-			handle_alt_ch(ev.Ch, v)
+			switch ev.Ch {
+			case 'v':
+				g.handle_command(vcommand_move_view_half_backward, 0)
+			case '<':
+				g.handle_command(vcommand_move_cursor_beginning_of_file, 0)
+			case '>':
+				g.handle_command(vcommand_move_cursor_end_of_file, 0)
+			}
 		} else if ev.Ch != 0 {
-			v.insert_rune(ev.Ch)
+			g.handle_command(vcommand_insert_rune, ev.Ch)
 		}
 
 		g.redraw()
@@ -1582,6 +1613,71 @@ func (g *godit) handle_event(ev *termbox.Event) bool {
 		termbox.Flush()
 	}
 	return true
+}
+
+//----------------------------------------------------------------------------
+// view commands
+//----------------------------------------------------------------------------
+
+type vcommand_class int
+
+const (
+	vcommand_class_none vcommand_class = iota
+	vcommand_class_movement
+	vcommand_class_insertion
+	vcommand_class_deletion
+	vcommand_class_history
+)
+
+type vcommand int
+
+const (
+	// movement commands (finalize undo action group)
+	_vcommand_movement_beg vcommand = iota
+	vcommand_move_cursor_forward
+	vcommand_move_cursor_backward
+	vcommand_move_cursor_next_line
+	vcommand_move_cursor_prev_line
+	vcommand_move_cursor_beginning_of_line
+	vcommand_move_cursor_end_of_line
+	vcommand_move_cursor_beginning_of_file
+	vcommand_move_cursor_end_of_file
+	vcommand_move_view_half_forward
+	vcommand_move_view_half_backward
+	_vcommand_movement_end
+
+	// insertion commands
+	_vcommand_insertion_beg
+	vcommand_insert_rune
+	vcommand_new_line
+	_vcommand_insertion_end
+
+	// deletion commands
+	_vcommand_deletion_beg
+	vcommand_delete_rune_backward
+	vcommand_delete_rune
+	vcommand_kill_line
+	_vcommand_deletion_end
+
+	// history commands (undo/redo)
+	_vcommand_history_beg
+	vcommand_undo
+	vcommand_redo
+	_vcommand_history_end
+)
+
+func (c vcommand) class() vcommand_class {
+	switch {
+	case c > _vcommand_movement_beg && c < _vcommand_movement_end:
+		return vcommand_class_movement
+	case c > _vcommand_insertion_beg && c < _vcommand_insertion_end:
+		return vcommand_class_insertion
+	case c > _vcommand_deletion_beg && c < _vcommand_deletion_end:
+		return vcommand_class_deletion
+	case c > _vcommand_history_beg && c < _vcommand_history_end:
+		return vcommand_class_history
+	}
+	return vcommand_class_none
 }
 
 func grow_byte_slice(s []byte, desired_cap int) []byte {
