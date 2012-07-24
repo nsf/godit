@@ -19,6 +19,21 @@ const (
 	view_horizontal_threshold = 10
 )
 
+func grow_byte_slice(s []byte, desired_cap int) []byte {
+	if cap(s) < desired_cap {
+		ns := make([]byte, len(s), desired_cap)
+		copy(ns, s)
+		return ns
+	}
+	return s
+}
+
+func copy_byte_slice(s []byte, b, e int) []byte {
+	c := make([]byte, e-b)
+	copy(c, s[b:e])
+	return c
+}
+
 //----------------------------------------------------------------------------
 // view_location
 //
@@ -75,16 +90,20 @@ const (
 //----------------------------------------------------------------------------
 
 type view struct {
-	status bytes.Buffer // temporary buffer for status bar text
-	buf    *buffer      // currently displayed buffer
-	uibuf  tulib.Buffer
-	loc    view_location
-	dirty  dirty_flag
+	parent  *godit       // view is owned by a godit instance
+	status  bytes.Buffer // temporary buffer for status bar text
+	buf     *buffer      // currently displayed buffer
+	uibuf   tulib.Buffer
+	loc     view_location
+	dirty   dirty_flag
+	oneline bool
 }
 
-func new_view(w, h int) *view {
+func new_view(parent *godit, buf *buffer) *view {
 	v := new(view)
-	v.uibuf = tulib.NewBuffer(w, h)
+	v.parent = parent
+	v.uibuf = tulib.NewBuffer(1, 1)
+	v.attach(buf)
 	return v
 }
 
@@ -110,15 +129,16 @@ func (v *view) detach() {
 // Resize the 'v.uibuf', adjusting things accordingly.
 func (v *view) resize(w, h int) {
 	v.uibuf.Resize(w, h)
-	if v.buf != nil {
-		v.adjust_line_voffset()
-		v.adjust_top_line()
-		v.dirty = dirty_everything
-	}
+	v.adjust_line_voffset()
+	v.adjust_top_line()
+	v.dirty = dirty_everything
 }
 
 func (v *view) height() int {
-	return v.uibuf.Height - 1
+	if !v.oneline {
+		return v.uibuf.Height - 1
+	}
+	return v.uibuf.Height
 }
 
 func (v *view) vertical_threshold() int {
@@ -267,6 +287,10 @@ func (v *view) redraw_contents() {
 }
 
 func (v *view) redraw_status() {
+	if v.oneline {
+		return
+	}
+
 	// draw status bar
 	lp := tulib.DefaultLabelParams
 	lp.Bg = termbox.AttrReverse
@@ -291,12 +315,12 @@ func (v *view) redraw_status() {
 
 // Redraw the current view to the 'v.uibuf'.
 func (v *view) redraw() {
-	if v.dirty & dirty_contents != 0 {
+	if v.dirty&dirty_contents != 0 {
 		v.dirty &^= dirty_contents
 		v.redraw_contents()
 	}
 
-	if v.dirty & dirty_status != 0 {
+	if v.dirty&dirty_status != 0 {
 		v.dirty &^= dirty_status
 		v.redraw_status()
 	}
@@ -529,6 +553,8 @@ func (v *view) move_cursor_next_line() {
 	line := v.loc.cursor_line
 	if line.next != nil {
 		v.move_cursor_to(line.next, v.loc.cursor_line_num+1, -1)
+	} else {
+		v.parent.set_status("End of buffer")
 	}
 }
 
@@ -537,6 +563,8 @@ func (v *view) move_cursor_prev_line() {
 	line := v.loc.cursor_line
 	if line.prev != nil {
 		v.move_cursor_to(line.prev, v.loc.cursor_line_num-1, -1)
+	} else {
+		v.parent.set_status("Beginning of buffer")
 	}
 }
 
@@ -601,38 +629,38 @@ func (v *view) maybe_move_view_n_lines(n int) {
 }
 
 func (v *view) maybe_next_action_group() {
-	u := &v.buf.undo
-	if u.cur.next == nil {
+	b := v.buf
+	if b.history.next == nil {
 		// no need to move
 		return
 	}
 
-	prev := u.cur
-	u.cur = u.cur.next
-	u.cur.prev = prev
-	u.cur.next = nil
-	u.cur.actions = nil
-	u.cur.before_cursor_line = v.loc.cursor_line
-	u.cur.before_cursor_line_num = v.loc.cursor_line_num
-	u.cur.before_cursor_boffset = v.loc.cursor_boffset
+	prev := b.history
+	b.history = b.history.next
+	b.history.prev = prev
+	b.history.next = nil
+	b.history.actions = nil
+	b.history.before_cursor_line = v.loc.cursor_line
+	b.history.before_cursor_line_num = v.loc.cursor_line_num
+	b.history.before_cursor_boffset = v.loc.cursor_boffset
 }
 
 func (v *view) finalize_action_group() {
-	u := &v.buf.undo
+	b := v.buf
 	// finalize only if we're at the tip of the undo history, this function
 	// will be called mainly after each cursor movement and actions alike
 	// (that are supposed to finalize action group)
-	if u.cur.next == nil {
-		u.cur.next = new(action_group)
-		u.cur.after_cursor_line = v.loc.cursor_line
-		u.cur.after_cursor_line_num = v.loc.cursor_line_num
-		u.cur.after_cursor_boffset = v.loc.cursor_boffset
+	if b.history.next == nil {
+		b.history.next = new(action_group)
+		b.history.after_cursor_line = v.loc.cursor_line
+		b.history.after_cursor_line_num = v.loc.cursor_line_num
+		b.history.after_cursor_boffset = v.loc.cursor_boffset
 	}
 }
 
 func (v *view) undo() {
-	u := &v.buf.undo
-	if u.cur.prev == nil {
+	b := v.buf
+	if b.history.prev == nil {
 		// we're at the sentinel, no more things to undo
 		return
 	}
@@ -640,37 +668,37 @@ func (v *view) undo() {
 	// undo action causes finalization, always
 	v.finalize_action_group()
 
-	// undo invariant tells us 'len(u.cur.actions) != 0' in case if this is
+	// undo invariant tells us 'len(b.history.actions) != 0' in case if this is
 	// not a sentinel, revert the actions in the current action group
-	for i := len(u.cur.actions) - 1; i >= 0; i-- {
-		a := &u.cur.actions[i]
+	for i := len(b.history.actions) - 1; i >= 0; i-- {
+		a := &b.history.actions[i]
 		a.revert(v)
 	}
-	v.move_cursor_to(u.cur.before_cursor_line, u.cur.before_cursor_line_num,
-		u.cur.before_cursor_boffset)
-	u.cur = u.cur.prev
+	v.move_cursor_to(b.history.before_cursor_line, b.history.before_cursor_line_num,
+		b.history.before_cursor_boffset)
+	b.history = b.history.prev
 }
 
 func (v *view) redo() {
-	u := &v.buf.undo
-	if u.cur.next == nil {
+	b := v.buf
+	if b.history.next == nil {
 		// open group, obviously, can't move forward
 		return
 	}
-	if len(u.cur.next.actions) == 0 {
+	if len(b.history.next.actions) == 0 {
 		// last finalized group, moving to the next group breaks the
 		// invariant and doesn't make sense (nothing to redo)
 		return
 	}
 
 	// move one entry forward, and redo all its actions
-	u.cur = u.cur.next
-	for i := range u.cur.actions {
-		a := &u.cur.actions[i]
+	b.history = b.history.next
+	for i := range b.history.actions {
+		a := &b.history.actions[i]
 		a.apply(v)
 	}
-	v.move_cursor_to(u.cur.after_cursor_line, u.cur.after_cursor_line_num,
-		u.cur.after_cursor_boffset)
+	v.move_cursor_to(b.history.after_cursor_line, b.history.after_cursor_line_num,
+		b.history.after_cursor_boffset)
 }
 
 func (v *view) action_insert(line *line, line_num, offset int, data []byte) {
@@ -683,7 +711,7 @@ func (v *view) action_insert(line *line, line_num, offset int, data []byte) {
 		line_num: line_num,
 	}
 	a.apply(v)
-	v.buf.undo.append(&a)
+	v.buf.history.append(&a)
 }
 
 func (v *view) action_delete(line *line, line_num, offset, nbytes int) {
@@ -697,7 +725,7 @@ func (v *view) action_delete(line *line, line_num, offset, nbytes int) {
 		line_num: line_num,
 	}
 	a.apply(v)
-	v.buf.undo.append(&a)
+	v.buf.history.append(&a)
 }
 
 func (v *view) action_insert_line(after *line, line_num int) *line {
@@ -708,7 +736,7 @@ func (v *view) action_insert_line(after *line, line_num int) *line {
 		line_num: line_num,
 	}
 	a.apply(v)
-	v.buf.undo.append(&a)
+	v.buf.history.append(&a)
 	return a.line
 }
 
@@ -720,7 +748,7 @@ func (v *view) action_delete_line(line *line, line_num int) {
 		line_num: line_num,
 	}
 	a.apply(v)
-	v.buf.undo.append(&a)
+	v.buf.history.append(&a)
 }
 
 // Insert a rune 'r' at the current cursor position, advance cursor one character forward.
@@ -1025,7 +1053,7 @@ type buffer struct {
 	last_line  *line
 	loc        view_location
 	lines_n    int
-	undo       undo
+	history    *action_group
 
 	// absoulte path if there is any, empty line otherwise
 	path string
@@ -1047,7 +1075,7 @@ func new_buffer() *buffer {
 		top_line_num:    1,
 		cursor_line_num: 1,
 	}
-	b.undo.init()
+	b.init_history()
 	return b
 }
 
@@ -1085,7 +1113,7 @@ func new_buffer_from_reader(r io.Reader) (*buffer, error) {
 		top_line_num:    1,
 		cursor_line_num: 1,
 	}
-	b.undo.init()
+	b.init_history()
 	b.lines_n = 1
 	b.first_line = l
 	for {
@@ -1144,8 +1172,47 @@ func (b *buffer) other_views(v *view, cb func(*view)) {
 	}
 }
 
+func (b *buffer) init_history() {
+	// the trick here is that I set 'sentinel' as 'history', it is required
+	// to maintain an invariant, where 'history' is a sentinel or is not
+	// empty
+
+	sentinel := new(action_group)
+	first := new(action_group)
+	sentinel.next = first
+	first.prev = sentinel
+	b.history = sentinel
+}
+
+func (b *buffer) dump_history() {
+	ag := b.history
+	for ag.prev != nil {
+		ag = ag.prev
+	}
+	i := 0
+	for ag != nil {
+		log.Printf("action group %d, %d entries\n", i, len(ag.actions))
+		for i := range ag.actions {
+			a := &ag.actions[i]
+			switch a.what {
+			case action_insert:
+				log.Printf("\tinsert %p, %d:%d (%s)\n",
+					a.line, a.offset, len(a.data), string(a.data))
+			case action_delete:
+				log.Printf("\tdelete %p, %d:%d (%s)\n",
+					a.line, a.offset, len(a.data), string(a.data))
+			case action_insert_line:
+				log.Printf("\tinsert line %p\n", a.line)
+			case action_delete_line:
+				log.Printf("\tdelete line %p\n", a.line)
+			}
+		}
+		ag = ag.next
+	}
+}
+
 //----------------------------------------------------------------------------
-// undo
+// action & action groups
 //----------------------------------------------------------------------------
 
 type action_type int
@@ -1279,58 +1346,16 @@ type action_group struct {
 	after_cursor_boffset   int
 }
 
-type undo struct {
-	cur *action_group
-}
-
-func (u *undo) init() {
-	sentinel := new(action_group)
-	first := new(action_group)
-	sentinel.next = first
-	first.prev = sentinel
-	u.cur = sentinel
-
-	// the trick here is that I set 'sentinel' as 'u.cur', it is required to
-	// maintain an invariant, where 'u.cur' is a sentinel or is not empty
-}
-
-func (u *undo) append(a *action) {
-	if len(u.cur.actions) != 0 {
+func (ag *action_group) append(a *action) {
+	if len(ag.actions) != 0 {
 		// Oh, we have something in the group already, let's try to
 		// merge this action with the last one.
-		last := &u.cur.actions[len(u.cur.actions)-1]
+		last := &ag.actions[len(ag.actions)-1]
 		if last.try_merge(a) {
 			return
 		}
 	}
-	u.cur.actions = append(u.cur.actions, *a)
-}
-
-func (u *undo) dump_history() {
-	ag := u.cur
-	for ag.prev != nil {
-		ag = ag.prev
-	}
-	i := 0
-	for ag != nil {
-		log.Printf("action group %d, %d entries\n", i, len(ag.actions))
-		for i := range ag.actions {
-			a := &ag.actions[i]
-			switch a.what {
-			case action_insert:
-				log.Printf("\tinsert %p, %d:%d (%s)\n",
-					a.line, a.offset, len(a.data), string(a.data))
-			case action_delete:
-				log.Printf("\tdelete %p, %d:%d (%s)\n",
-					a.line, a.offset, len(a.data), string(a.data))
-			case action_insert_line:
-				log.Printf("\tinsert line %p\n", a.line)
-			case action_delete_line:
-				log.Printf("\tdelete line %p\n", a.line)
-			}
-		}
-		ag = ag.next
-	}
+	ag.actions = append(ag.actions, *a)
 }
 
 //----------------------------------------------------------------------------
@@ -1359,8 +1384,7 @@ func new_view_tree_leaf(v *view) *view_tree {
 
 func (v *view_tree) split_vertically() {
 	top := v.leaf
-	bottom := new_view(1, 1)
-	bottom.attach(top.buf)
+	bottom := new_view(top.parent, top.buf)
 	*v = view_tree{
 		top:    new_view_tree_leaf(top),
 		bottom: new_view_tree_leaf(bottom),
@@ -1370,8 +1394,7 @@ func (v *view_tree) split_vertically() {
 
 func (v *view_tree) split_horizontally() {
 	left := v.leaf
-	right := new_view(1, 1)
-	right.attach(left.buf)
+	right := new_view(left.parent, left.buf)
 	*v = view_tree{
 		left:  new_view_tree_leaf(left),
 		right: new_view_tree_leaf(right),
@@ -1489,7 +1512,7 @@ func (c vcommand) class() vcommand_class {
 //----------------------------------------------------------------------------
 // godit
 //
-// Main top-level structure, that handles views composition, command line and
+// Main top-level structure, that handles views composition, status bar and
 // input messaging. Also it's the spot where keyboard macros are implemented.
 //----------------------------------------------------------------------------
 
@@ -1499,15 +1522,33 @@ type godit struct {
 	views        *view_tree // a root node
 	buffers      []*buffer
 	lastcmdclass vcommand_class
+	statusbuf    bytes.Buffer
 }
 
-func new_godit() *godit {
+func new_godit(filenames []string) *godit {
 	g := new(godit)
-	g.views = new_view_tree_leaf(new_view(1, 1))
-	g.active = g.views
 	g.buffers = make([]*buffer, 0, 20)
-	g.resize()
+	for _, filename := range filenames {
+		buf, err := new_buffer_from_file(filename)
+		if err != nil {
+			buf = new_buffer()
+			buf.name = filename
+		}
+		g.buffers = append(g.buffers, buf)
+	}
+	if len(g.buffers) == 0 {
+		buf := new_buffer()
+		buf.name = "*new*"
+		g.buffers = append(g.buffers, buf)
+	}
+	g.views = new_view_tree_leaf(new_view(g, g.buffers[0]))
+	g.active = g.views
 	return g
+}
+
+func (g *godit) set_status(format string, args ...interface{}) {
+	g.statusbuf.Reset()
+	fmt.Fprintf(&g.statusbuf, format, args...)
 }
 
 func (g *godit) split_horizontally() {
@@ -1520,35 +1561,42 @@ func (g *godit) split_vertically() {
 	g.active = g.active.top
 }
 
+// Call it manually only when views layout has changed.
 func (g *godit) resize() {
 	g.uibuf = tulib.TermboxBuffer()
-	g.views.resize(g.uibuf.Rect)
-}
-
-func (g *godit) open_file(filename string) {
-	// TODO: use g.buffers
-	buf, err := new_buffer_from_file(filename)
-	if err != nil {
-		panic(err)
-	}
-
-	g.active.leaf.attach(buf)
+	views_area := g.uibuf.Rect
+	views_area.Height -= 1 // reserve space for command line
+	g.views.resize(views_area)
 }
 
 func (g *godit) redraw() {
+	w, h := termbox.Size()
+	if w != g.uibuf.Width || h != g.uibuf.Height {
+		g.resize()
+	}
 	g.views.redraw()
-	g.redraw_recursive(g.views)
+	g.composite_recursively(g.views)
+	g.draw_status()
 }
 
-func (g *godit) redraw_recursive(v *view_tree) {
+func (g *godit) draw_status() {
+	lp := tulib.DefaultLabelParams
+	r := g.uibuf.Rect
+	r.Y = r.Height-1
+	r.Height = 1
+	g.uibuf.Fill(r, termbox.Cell{Fg: lp.Fg, Bg: lp.Bg, Ch: ' '})
+	g.uibuf.DrawLabel(r, &lp, g.statusbuf.Bytes())
+}
+
+func (g *godit) composite_recursively(v *view_tree) {
 	if v.leaf != nil {
 		g.uibuf.Blit(v.pos, 0, 0, &v.leaf.uibuf)
 		return
 	}
 
 	if v.left != nil {
-		g.redraw_recursive(v.left)
-		g.redraw_recursive(v.right)
+		g.composite_recursively(v.left)
+		g.composite_recursively(v.right)
 		splitter := v.right.pos
 		splitter.X -= 1
 		splitter.Width = 1
@@ -1558,8 +1606,8 @@ func (g *godit) redraw_recursive(v *view_tree) {
 			Ch: '│',
 		})
 	} else {
-		g.redraw_recursive(v.top)
-		g.redraw_recursive(v.bottom)
+		g.composite_recursively(v.top)
+		g.composite_recursively(v.bottom)
 	}
 }
 
@@ -1618,6 +1666,7 @@ func (g *godit) handle_command(cmd vcommand, arg rune) {
 func (g *godit) handle_event(ev *termbox.Event) bool {
 	switch ev.Type {
 	case termbox.EventKey:
+		g.set_status("") // reset status on every key event
 		switch ev.Key {
 		case termbox.KeyCtrlX:
 			return false
@@ -1654,7 +1703,7 @@ func (g *godit) handle_event(ev *termbox.Event) bool {
 		case termbox.KeyTab:
 			g.handle_command(vcommand_insert_rune, '\t')
 		case termbox.KeyF1:
-			g.active.leaf.buf.undo.dump_history()
+			g.active.leaf.buf.dump_history()
 		case termbox.KeyF2:
 			g.split_horizontally()
 			g.resize()
@@ -1686,8 +1735,8 @@ func (g *godit) handle_event(ev *termbox.Event) bool {
 		termbox.SetCursor(g.cursor_position())
 		termbox.Flush()
 	case termbox.EventResize:
+		// clear the backbuffer, to apply the new size
 		termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
-		g.resize()
 		g.redraw()
 		termbox.SetCursor(g.cursor_position())
 		termbox.Flush()
@@ -1695,27 +1744,7 @@ func (g *godit) handle_event(ev *termbox.Event) bool {
 	return true
 }
 
-func grow_byte_slice(s []byte, desired_cap int) []byte {
-	if cap(s) < desired_cap {
-		ns := make([]byte, len(s), desired_cap)
-		copy(ns, s)
-		return ns
-	}
-	return s
-}
-
-func copy_byte_slice(s []byte, b, e int) []byte {
-	c := make([]byte, e-b)
-	copy(c, s[b:e])
-	return c
-}
-
 func main() {
-	if len(os.Args) != 2 {
-		println("usage: godit <file>")
-		return
-	}
-
 	err := termbox.Init()
 	if err != nil {
 		panic(err)
@@ -1723,8 +1752,7 @@ func main() {
 	defer termbox.Close()
 	termbox.SetInputMode(termbox.InputAlt)
 
-	godit := new_godit()
-	godit.open_file(os.Args[1])
+	godit := new_godit(os.Args[1:])
 	godit.redraw()
 	termbox.SetCursor(godit.cursor_position())
 	termbox.Flush()
