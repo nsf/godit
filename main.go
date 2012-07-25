@@ -173,9 +173,9 @@ func (v *view) in_view(line_num int) bool {
 	return true
 }
 
-// This function is similar to what happens inside 'redraw', but it contains a
+// This function is similar to what happens inside 'draw', but it contains a
 // certain amount of specific code related to 'loc.line_voffset'. You shouldn't
-// use it directly, call 'redraw' instead.
+// use it directly, call 'draw' instead.
 func (v *view) draw_cursor_line(line *line, coff int) {
 	x := 0
 	tabstop := 0
@@ -223,7 +223,7 @@ func (v *view) draw_cursor_line(line *line, coff int) {
 	}
 }
 
-func (v *view) redraw_contents() {
+func (v *view) draw_contents() {
 	// clear the buffer
 	v.uibuf.Fill(v.uibuf.Rect, termbox.Cell{
 		Ch: ' ',
@@ -286,7 +286,7 @@ func (v *view) redraw_contents() {
 	}
 }
 
-func (v *view) redraw_status() {
+func (v *view) draw_status() {
 	if v.oneline {
 		return
 	}
@@ -313,16 +313,16 @@ func (v *view) redraw_status() {
 	v.status.Reset()
 }
 
-// Redraw the current view to the 'v.uibuf'.
-func (v *view) redraw() {
+// Draw the current view to the 'v.uibuf'.
+func (v *view) draw() {
 	if v.dirty&dirty_contents != 0 {
 		v.dirty &^= dirty_contents
-		v.redraw_contents()
+		v.draw_contents()
 	}
 
 	if v.dirty&dirty_status != 0 {
 		v.dirty &^= dirty_status
-		v.redraw_status()
+		v.draw_status()
 	}
 }
 
@@ -995,6 +995,102 @@ func (v *view) on_delete_line(line *line, line_num int) {
 	})
 }
 
+func (v *view) on_vcommand(cmd vcommand, arg rune) {
+	cmdclass := cmd.class()
+	if cmdclass != v.parent.lastcmdclass {
+		v.parent.lastcmdclass = cmdclass
+		v.finalize_action_group()
+	}
+
+	switch cmd {
+	case vcommand_move_cursor_forward:
+		v.move_cursor_forward()
+	case vcommand_move_cursor_backward:
+		v.move_cursor_backward()
+	case vcommand_move_cursor_next_line:
+		v.move_cursor_next_line()
+	case vcommand_move_cursor_prev_line:
+		v.move_cursor_prev_line()
+	case vcommand_move_cursor_beginning_of_line:
+		v.move_cursor_beginning_of_line()
+	case vcommand_move_cursor_end_of_line:
+		v.move_cursor_end_of_line()
+	case vcommand_move_cursor_beginning_of_file:
+		v.move_cursor_beginning_of_file()
+	case vcommand_move_cursor_end_of_file:
+		v.move_cursor_end_of_file()
+	case vcommand_move_view_half_forward:
+		v.maybe_move_view_n_lines(v.height() / 2)
+	case vcommand_move_view_half_backward:
+		v.move_view_n_lines(-v.height() / 2)
+	case vcommand_insert_rune:
+		v.insert_rune(arg)
+	case vcommand_new_line:
+		v.new_line()
+	case vcommand_delete_rune_backward:
+		v.delete_rune_backward()
+	case vcommand_delete_rune:
+		v.delete_rune()
+	case vcommand_kill_line:
+		v.kill_line()
+	case vcommand_undo:
+		v.undo()
+	case vcommand_redo:
+		v.redo()
+	}
+}
+
+func (v *view) on_key(ev *termbox.Event) {
+	switch ev.Key {
+	case termbox.KeyCtrlF, termbox.KeyArrowRight:
+		v.on_vcommand(vcommand_move_cursor_forward, 0)
+	case termbox.KeyCtrlB, termbox.KeyArrowLeft:
+		v.on_vcommand(vcommand_move_cursor_backward, 0)
+	case termbox.KeyCtrlN, termbox.KeyArrowDown:
+		v.on_vcommand(vcommand_move_cursor_next_line, 0)
+	case termbox.KeyCtrlP, termbox.KeyArrowUp:
+		v.on_vcommand(vcommand_move_cursor_prev_line, 0)
+	case termbox.KeyCtrlE, termbox.KeyEnd:
+		v.on_vcommand(vcommand_move_cursor_end_of_line, 0)
+	case termbox.KeyCtrlA, termbox.KeyHome:
+		v.on_vcommand(vcommand_move_cursor_beginning_of_line, 0)
+	case termbox.KeyCtrlV, termbox.KeyPgdn:
+		v.on_vcommand(vcommand_move_view_half_forward, 0)
+	case termbox.KeyCtrlSlash:
+		v.on_vcommand(vcommand_undo, 0)
+	case termbox.KeySpace:
+		v.on_vcommand(vcommand_insert_rune, ' ')
+	case termbox.KeyEnter, termbox.KeyCtrlJ:
+		v.on_vcommand(vcommand_new_line, 0)
+	case termbox.KeyBackspace, termbox.KeyBackspace2:
+		v.on_vcommand(vcommand_delete_rune_backward, 0)
+	case termbox.KeyDelete, termbox.KeyCtrlD:
+		v.on_vcommand(vcommand_delete_rune, 0)
+	case termbox.KeyCtrlK:
+		v.on_vcommand(vcommand_kill_line, 0)
+	case termbox.KeyPgup:
+		v.on_vcommand(vcommand_move_view_half_backward, 0)
+	case termbox.KeyCtrlR:
+		v.on_vcommand(vcommand_redo, 0)
+	case termbox.KeyTab:
+		v.on_vcommand(vcommand_insert_rune, '\t')
+	}
+
+	if ev.Mod&termbox.ModAlt != 0 {
+		switch ev.Ch {
+		case 'v':
+			v.on_vcommand(vcommand_move_view_half_backward, 0)
+		case '<':
+			v.on_vcommand(vcommand_move_cursor_beginning_of_file, 0)
+		case '>':
+			v.on_vcommand(vcommand_move_cursor_end_of_file, 0)
+		}
+	} else if ev.Ch != 0 {
+		v.on_vcommand(vcommand_insert_rune, ev.Ch)
+	}
+
+}
+
 //----------------------------------------------------------------------------
 // line
 //----------------------------------------------------------------------------
@@ -1420,18 +1516,18 @@ func (v *view_tree) split_horizontally() {
 	}
 }
 
-func (v *view_tree) redraw() {
+func (v *view_tree) draw() {
 	if v.leaf != nil {
-		v.leaf.redraw()
+		v.leaf.draw()
 		return
 	}
 
 	if v.left != nil {
-		v.left.redraw()
-		v.right.redraw()
+		v.left.draw()
+		v.right.draw()
 	} else {
-		v.top.redraw()
-		v.bottom.redraw()
+		v.top.draw()
+		v.bottom.draw()
 	}
 }
 
@@ -1541,6 +1637,8 @@ type godit struct {
 	buffers      []*buffer
 	lastcmdclass vcommand_class
 	statusbuf    bytes.Buffer
+	quitflag     bool
+	overlay      overlay_mode
 }
 
 func new_godit(filenames []string) *godit {
@@ -1575,11 +1673,13 @@ func (g *godit) set_status(format string, args ...interface{}) {
 func (g *godit) split_horizontally() {
 	g.active.split_horizontally()
 	g.active = g.active.left
+	g.resize()
 }
 
 func (g *godit) split_vertically() {
 	g.active.split_vertically()
 	g.active = g.active.top
+	g.resize()
 }
 
 // Call it manually only when views layout has changed.
@@ -1590,14 +1690,21 @@ func (g *godit) resize() {
 	g.views.resize(views_area)
 }
 
-func (g *godit) redraw() {
-	w, h := termbox.Size()
-	if w != g.uibuf.Width || h != g.uibuf.Height {
-		g.resize()
-	}
-	g.views.redraw()
+func (g *godit) draw() {
+	// draw everything
+	g.views.draw()
 	g.composite_recursively(g.views)
 	g.draw_status()
+
+	// draw overlay if any
+	if g.overlay != nil {
+		g.overlay.draw()
+	}
+
+	// update cursor position
+	if g.overlay == nil || !g.overlay.needs_cursor() {
+		termbox.SetCursor(g.cursor_position())
+	}
 }
 
 func (g *godit) draw_status() {
@@ -1637,50 +1744,22 @@ func (g *godit) cursor_position() (int, int) {
 	return g.active.pos.X + x, g.active.pos.Y + y
 }
 
-func (g *godit) handle_command(cmd vcommand, arg rune) {
-	v := g.active.leaf
-
-	class := cmd.class()
-	if class != g.lastcmdclass {
-		g.lastcmdclass = class
-		v.finalize_action_group()
+func (g *godit) on_sys_key(ev *termbox.Event) {
+	switch ev.Key {
+	case termbox.KeyCtrlG:
+		g.set_overlay_mode(nil)
+		g.set_status("Quit")
 	}
+}
 
-	switch cmd {
-	case vcommand_move_cursor_forward:
-		v.move_cursor_forward()
-	case vcommand_move_cursor_backward:
-		v.move_cursor_backward()
-	case vcommand_move_cursor_next_line:
-		v.move_cursor_next_line()
-	case vcommand_move_cursor_prev_line:
-		v.move_cursor_prev_line()
-	case vcommand_move_cursor_beginning_of_line:
-		v.move_cursor_beginning_of_line()
-	case vcommand_move_cursor_end_of_line:
-		v.move_cursor_end_of_line()
-	case vcommand_move_cursor_beginning_of_file:
-		v.move_cursor_beginning_of_file()
-	case vcommand_move_cursor_end_of_file:
-		v.move_cursor_end_of_file()
-	case vcommand_move_view_half_forward:
-		v.maybe_move_view_n_lines(v.height() / 2)
-	case vcommand_move_view_half_backward:
-		v.move_view_n_lines(-v.height() / 2)
-	case vcommand_insert_rune:
-		v.insert_rune(arg)
-	case vcommand_new_line:
-		v.new_line()
-	case vcommand_delete_rune_backward:
-		v.delete_rune_backward()
-	case vcommand_delete_rune:
-		v.delete_rune()
-	case vcommand_kill_line:
-		v.kill_line()
-	case vcommand_undo:
-		v.undo()
-	case vcommand_redo:
-		v.redo()
+func (g *godit) on_key(ev *termbox.Event) {
+	switch ev.Key {
+	case termbox.KeyCtrlX:
+		g.set_overlay_mode(extended_mode{godit: g})
+	case termbox.KeyF1:
+		g.active.leaf.buf.dump_history()
+	default:
+		g.active.leaf.on_key(ev)
 	}
 }
 
@@ -1688,81 +1767,104 @@ func (g *godit) handle_event(ev *termbox.Event) bool {
 	switch ev.Type {
 	case termbox.EventKey:
 		g.set_status("") // reset status on every key event
-		switch ev.Key {
-		case termbox.KeyCtrlX:
+		g.on_sys_key(ev)
+		if g.overlay != nil {
+			g.overlay.on_key(ev)
+		} else {
+			g.on_key(ev)
+		}
+
+		if g.quitflag {
 			return false
-		case termbox.KeyCtrlF, termbox.KeyArrowRight:
-			g.handle_command(vcommand_move_cursor_forward, 0)
-		case termbox.KeyCtrlB, termbox.KeyArrowLeft:
-			g.handle_command(vcommand_move_cursor_backward, 0)
-		case termbox.KeyCtrlN, termbox.KeyArrowDown:
-			g.handle_command(vcommand_move_cursor_next_line, 0)
-		case termbox.KeyCtrlP, termbox.KeyArrowUp:
-			g.handle_command(vcommand_move_cursor_prev_line, 0)
-		case termbox.KeyCtrlE, termbox.KeyEnd:
-			g.handle_command(vcommand_move_cursor_end_of_line, 0)
-		case termbox.KeyCtrlA, termbox.KeyHome:
-			g.handle_command(vcommand_move_cursor_beginning_of_line, 0)
-		case termbox.KeyCtrlV, termbox.KeyPgdn:
-			g.handle_command(vcommand_move_view_half_forward, 0)
-		case termbox.KeyCtrlSlash:
-			g.handle_command(vcommand_undo, 0)
-		case termbox.KeySpace:
-			g.handle_command(vcommand_insert_rune, ' ')
-		case termbox.KeyEnter, termbox.KeyCtrlJ:
-			g.handle_command(vcommand_new_line, 0)
-		case termbox.KeyBackspace, termbox.KeyBackspace2:
-			g.handle_command(vcommand_delete_rune_backward, 0)
-		case termbox.KeyDelete, termbox.KeyCtrlD:
-			g.handle_command(vcommand_delete_rune, 0)
-		case termbox.KeyCtrlK:
-			g.handle_command(vcommand_kill_line, 0)
-		case termbox.KeyPgup:
-			g.handle_command(vcommand_move_view_half_backward, 0)
-		case termbox.KeyCtrlR:
-			g.handle_command(vcommand_redo, 0)
-		case termbox.KeyTab:
-			g.handle_command(vcommand_insert_rune, '\t')
-		case termbox.KeyF1:
-			g.active.leaf.buf.dump_history()
-		case termbox.KeyF2:
-			g.split_horizontally()
-			g.resize()
-		case termbox.KeyF3:
-			g.split_vertically()
-			g.resize()
-		case termbox.KeyF4:
-			if g.views.left == g.active {
-				g.active = g.views.right
-			} else if g.views.right == g.active {
-				g.active = g.views.left
-			}
 		}
 
-		if ev.Mod&termbox.ModAlt != 0 {
-			switch ev.Ch {
-			case 'v':
-				g.handle_command(vcommand_move_view_half_backward, 0)
-			case '<':
-				g.handle_command(vcommand_move_cursor_beginning_of_file, 0)
-			case '>':
-				g.handle_command(vcommand_move_cursor_end_of_file, 0)
-			}
-		} else if ev.Ch != 0 {
-			g.handle_command(vcommand_insert_rune, ev.Ch)
-		}
-
-		g.redraw()
-		termbox.SetCursor(g.cursor_position())
+		g.draw()
 		termbox.Flush()
 	case termbox.EventResize:
-		// clear the backbuffer, to apply the new size
 		termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
-		g.redraw()
-		termbox.SetCursor(g.cursor_position())
+		g.resize()
+		if g.overlay != nil {
+			g.overlay.on_resize(ev)
+		}
+		g.draw()
 		termbox.Flush()
 	}
 	return true
+}
+
+func (g *godit) set_overlay_mode(m overlay_mode) {
+	if g.overlay != nil {
+		g.overlay.exit()
+	}
+	if m != nil {
+		m.init()
+	}
+	g.overlay = m
+}
+
+//----------------------------------------------------------------------------
+// overlay mode
+//----------------------------------------------------------------------------
+
+type overlay_mode interface {
+	needs_cursor() bool
+	init()
+	exit()
+	draw()
+	on_resize(ev *termbox.Event)
+	on_key(ev *termbox.Event)
+}
+
+type default_overlay_mode struct {}
+
+func (default_overlay_mode) needs_cursor() bool { return false }
+func (default_overlay_mode) init() {}
+func (default_overlay_mode) exit() {}
+func (default_overlay_mode) draw() {}
+func (default_overlay_mode) on_resize(ev *termbox.Event) {}
+func (default_overlay_mode) on_key(ev *termbox.Event) {}
+
+//----------------------------------------------------------------------------
+// extended mode
+//----------------------------------------------------------------------------
+
+type extended_mode struct {
+	godit *godit
+	default_overlay_mode
+}
+
+func (e extended_mode) init() {
+	e.godit.set_status("C-x")
+}
+
+func (e extended_mode) on_key(ev *termbox.Event) {
+	g := e.godit
+
+	switch ev.Key {
+	case termbox.KeyCtrlC:
+		g.quitflag = true
+	}
+
+	switch ev.Ch {
+	case '2':
+		g.split_vertically()
+	case '3':
+		g.split_horizontally()
+	case 'o':
+		if g.views.left == g.active {
+			g.active = g.views.right
+		} else if g.views.right == g.active {
+			g.active = g.views.left
+		}
+	default:
+		goto undefined
+	}
+
+	g.set_overlay_mode(nil)
+	return
+undefined:
+	g.set_status("C-x %s is undefined", tulib.KeyToString(ev.Key, ev.Ch, ev.Mod))
+	g.set_overlay_mode(nil)
 }
 
 func main() {
@@ -1774,7 +1876,8 @@ func main() {
 	termbox.SetInputMode(termbox.InputAlt)
 
 	godit := new_godit(os.Args[1:])
-	godit.redraw()
+	godit.resize()
+	godit.draw()
 	termbox.SetCursor(godit.cursor_position())
 	termbox.Flush()
 
