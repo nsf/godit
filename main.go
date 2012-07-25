@@ -537,15 +537,33 @@ otherline:
 // Move cursor one character forward.
 func (v *view) move_cursor_forward() {
 	line := v.loc.cursor_line
-	_, rlen := utf8.DecodeRune(line.data[v.loc.cursor_boffset:])
-	v.move_cursor_to(line, v.loc.cursor_line_num, v.loc.cursor_boffset+rlen)
+	if line == v.buf.last_line && v.loc.cursor_boffset == len(line.data) {
+		v.parent.set_status("End of buffer")
+		return
+	}
+
+	if v.loc.cursor_boffset == len(line.data) {
+		v.move_cursor_to(line.next, v.loc.cursor_line_num+1, 0)
+	} else {
+		_, rlen := utf8.DecodeRune(line.data[v.loc.cursor_boffset:])
+		v.move_cursor_to(line, v.loc.cursor_line_num, v.loc.cursor_boffset+rlen)
+	}
 }
 
 // Move cursor one character backward.
 func (v *view) move_cursor_backward() {
 	line := v.loc.cursor_line
-	_, rlen := utf8.DecodeLastRune(line.data[:v.loc.cursor_boffset])
-	v.move_cursor_to(line, v.loc.cursor_line_num, v.loc.cursor_boffset-rlen)
+	if line == v.buf.first_line && v.loc.cursor_boffset == 0 {
+		v.parent.set_status("Beginning of buffer")
+		return
+	}
+
+	if v.loc.cursor_boffset == 0 {
+		v.move_cursor_to(line.prev, v.loc.cursor_line_num-1, len(line.prev.data))
+	} else {
+		_, rlen := utf8.DecodeLastRune(line.data[:v.loc.cursor_boffset])
+		v.move_cursor_to(line, v.loc.cursor_line_num, v.loc.cursor_boffset-rlen)
+	}
 }
 
 // Move cursor to the next line.
@@ -1540,6 +1558,9 @@ func new_godit(filenames []string) *godit {
 		buf := new_buffer()
 		buf.name = "*new*"
 		g.buffers = append(g.buffers, buf)
+	}
+	if g.buffers[0].path == "" {
+		g.set_status("(New file)")
 	}
 	g.views = new_view_tree_leaf(new_view(g, g.buffers[0]))
 	g.active = g.views
