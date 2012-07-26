@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -32,6 +33,10 @@ func copy_byte_slice(s []byte, b, e int) []byte {
 	c := make([]byte, e-b)
 	copy(c, s[b:e])
 	return c
+}
+
+func is_word(r rune) bool {
+	return r == '_' || unicode.IsLetter(r) || unicode.IsNumber(r)
 }
 
 //----------------------------------------------------------------------------
@@ -602,9 +607,88 @@ func (v *view) move_cursor_beginning_of_file() {
 	v.move_cursor_to(v.buf.first_line, 1, 0)
 }
 
-// Move cursor to the enf of the file (buffer).
+// Move cursor to the end of the file (buffer).
 func (v *view) move_cursor_end_of_file() {
 	v.move_cursor_to(v.buf.last_line, v.buf.lines_n, len(v.buf.last_line.data))
+}
+
+// Move cursor to the end of the next (or current) word.
+func (v *view) move_cursor_word_forward() {
+	// move cursor forward until the first word rune is met
+	for {
+		bo, line := v.loc.cursor_boffset, v.loc.cursor_line
+		if bo == len(line.data) {
+			if line == v.buf.last_line {
+				v.parent.set_status("End of buffer")
+				return
+			} else {
+				v.move_cursor_to(line.next, v.loc.cursor_line_num+1, 0)
+				continue
+			}
+		}
+
+		r, rlen := utf8.DecodeRune(line.data[bo:])
+		for !is_word(r) && bo != len(line.data) {
+			bo += rlen
+			r, rlen = utf8.DecodeRune(line.data[bo:])
+		}
+
+		v.move_cursor_to(line, v.loc.cursor_line_num, bo)
+		if bo == len(line.data) {
+			continue
+		}
+		break
+	}
+
+	// now the cursor is under the word rune, skip all of them
+	bo, line := v.loc.cursor_boffset, v.loc.cursor_line
+	r, rlen := utf8.DecodeRune(line.data[bo:])
+	for is_word(r) && bo != len(line.data) {
+		bo += rlen
+		r, rlen = utf8.DecodeRune(line.data[bo:])
+	}
+
+	v.move_cursor_to(line, v.loc.cursor_line_num, bo)
+}
+
+func (v *view) move_cursor_word_backward() {
+	// move cursor backward while previous rune is not a word rune
+	for {
+		bo, line := v.loc.cursor_boffset, v.loc.cursor_line
+		if bo == 0 {
+			if line == v.buf.first_line {
+				v.parent.set_status("Beginning of buffer")
+				return
+			} else {
+				v.move_cursor_to(line.prev, v.loc.cursor_line_num-1,
+					len(line.prev.data))
+				continue
+			}
+		}
+
+		r, rlen := utf8.DecodeLastRune(line.data[:bo])
+		for !is_word(r) && bo != 0 {
+			bo -= rlen
+			r, rlen = utf8.DecodeLastRune(line.data[:bo])
+		}
+
+		v.move_cursor_to(line, v.loc.cursor_line_num, bo)
+		if bo == 0 {
+			continue
+		}
+		break
+	}
+
+	// now the rune behind the cursor is a word rune, while it's true, move
+	// backwards
+	bo, line := v.loc.cursor_boffset, v.loc.cursor_line
+	r, rlen := utf8.DecodeLastRune(line.data[:bo])
+	for is_word(r) && bo != 0 {
+		bo -= rlen
+		r, rlen = utf8.DecodeLastRune(line.data[:bo])
+	}
+
+	v.move_cursor_to(line, v.loc.cursor_line_num, bo)
 }
 
 // Move view 'n' lines forward or backward.
@@ -1007,6 +1091,10 @@ func (v *view) on_vcommand(cmd vcommand, arg rune) {
 		v.move_cursor_forward()
 	case vcommand_move_cursor_backward:
 		v.move_cursor_backward()
+	case vcommand_move_cursor_word_forward:
+		v.move_cursor_word_forward()
+	case vcommand_move_cursor_word_backward:
+		v.move_cursor_word_backward()
 	case vcommand_move_cursor_next_line:
 		v.move_cursor_next_line()
 	case vcommand_move_cursor_prev_line:
@@ -1084,6 +1172,10 @@ func (v *view) on_key(ev *termbox.Event) {
 			v.on_vcommand(vcommand_move_cursor_beginning_of_file, 0)
 		case '>':
 			v.on_vcommand(vcommand_move_cursor_end_of_file, 0)
+		case 'f':
+			v.on_vcommand(vcommand_move_cursor_word_forward, 0)
+		case 'b':
+			v.on_vcommand(vcommand_move_cursor_word_backward, 0)
 		}
 	} else if ev.Ch != 0 {
 		v.on_vcommand(vcommand_insert_rune, ev.Ch)
@@ -1579,6 +1671,8 @@ const (
 	_vcommand_movement_beg vcommand = iota
 	vcommand_move_cursor_forward
 	vcommand_move_cursor_backward
+	vcommand_move_cursor_word_forward
+	vcommand_move_cursor_word_backward
 	vcommand_move_cursor_next_line
 	vcommand_move_cursor_prev_line
 	vcommand_move_cursor_beginning_of_line
