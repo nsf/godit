@@ -482,7 +482,9 @@ func (v *view) cursor_position() (int, int) {
 }
 
 // Move cursor to the 'boffset' position in the 'line'. Obviously 'line' must be
-// from the attached buffer. If 'boffset' < 0, use 'last_cursor_voffset'.
+// from the attached buffer. If 'boffset' < 0, use 'last_cursor_voffset'. Keep
+// in mind that there is no need to maintain connections between lines (e.g. for
+// moving from a deleted line to another line).
 func (v *view) move_cursor_to(c cursor_location) {
 	v.dirty |= dirty_status
 	curline := v.loc.cursor.line
