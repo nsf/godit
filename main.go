@@ -874,6 +874,7 @@ func (v *view) undo() {
 	// undo action causes finalization, always
 	v.finalize_action_group()
 
+	v.move_cursor_to(b.history.after)
 	// undo invariant tells us 'len(b.history.actions) != 0' in case if this is
 	// not a sentinel, revert the actions in the current action group
 	for i := len(b.history.actions) - 1; i >= 0; i-- {
@@ -898,6 +899,7 @@ func (v *view) redo() {
 
 	// move one entry forward, and redo all its actions
 	b.history = b.history.next
+	v.move_cursor_to(b.history.before)
 	for i := range b.history.actions {
 		a := &b.history.actions[i]
 		a.apply(v)
