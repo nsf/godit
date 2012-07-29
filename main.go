@@ -882,6 +882,7 @@ func (v *view) undo() {
 		a.revert(v)
 	}
 	v.move_cursor_to(b.history.before)
+	v.loc.last_cursor_voffset = v.loc.cursor_voffset
 	b.history = b.history.prev
 }
 
@@ -905,6 +906,7 @@ func (v *view) redo() {
 		a.apply(v)
 	}
 	v.move_cursor_to(b.history.after)
+	v.loc.last_cursor_voffset = v.loc.cursor_voffset
 }
 
 func (v *view) action_insert(c cursor_location, data []byte) {
