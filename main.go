@@ -28,6 +28,15 @@ func grow_byte_slice(s []byte, desired_cap int) []byte {
 	return s
 }
 
+func insert_bytes(s []byte, offset int, data []byte) []byte {
+	n := len(s) + len(data)
+	s = grow_byte_slice(s, n)
+	s = s[:n]
+	copy(s[offset+len(data):], s[offset:])
+	copy(s[offset:], data)
+	return s
+}
+
 func copy_byte_slice(s []byte, b, e int) []byte {
 	c := make([]byte, e-b)
 	copy(c, s[b:e])
@@ -36,6 +45,33 @@ func copy_byte_slice(s []byte, b, e int) []byte {
 
 func is_word(r rune) bool {
 	return r == '_' || unicode.IsLetter(r) || unicode.IsNumber(r)
+}
+
+// Function will iterate 'data' contents, calling 'cb' on some data or on '\n',
+// but never both. For example, given this data: "\n123\n123\n\n", it will call
+// 'cb' 6 times: ['\n', '123', '\n', '123', '\n', '\n']
+func iter_lines(data []byte, cb func([]byte)) {
+	offset := 0
+	for {
+		if offset == len(data) {
+			return
+		}
+
+		i := bytes.IndexByte(data[offset:], '\n')
+		switch i {
+		case -1:
+			cb(data[offset:])
+			return
+		case 0:
+			cb(data[offset:offset+1])
+			offset++
+			continue
+		}
+
+		cb(data[offset:offset+i])
+		cb(data[offset+i:offset+i+1])
+		offset += i+1
+	}
 }
 
 //----------------------------------------------------------------------------
@@ -76,6 +112,31 @@ func (c *cursor_location) eol() bool {
 // beginning of line
 func (c *cursor_location) bol() bool {
 	return c.boffset == 0
+}
+
+func (c *cursor_location) extract_bytes(n int) []byte {
+	var buf bytes.Buffer
+	offset := c.boffset
+	line := c.line
+	for n > 0 {
+		switch {
+		case offset < len(line.data):
+			nb := len(line.data) - offset
+			if n < nb {
+				nb = n
+			}
+			buf.Write(line.data[offset:offset+nb])
+			n -= nb
+		case offset == len(line.data):
+			buf.WriteByte('\n')
+			offset = 0
+			line = line.next
+			n -= 1
+		default:
+			panic("unreachable")
+		}
+	}
+	return buf.Bytes()
 }
 
 type view_location struct {
@@ -590,12 +651,12 @@ func (v *view) move_cursor_forward() {
 // Move cursor one character backward.
 func (v *view) move_cursor_backward() {
 	c := v.loc.cursor
-	if c.line == v.buf.first_line && c.boffset == 0 {
+	if c.first_line() && c.bol() {
 		v.parent.set_status("Beginning of buffer")
 		return
 	}
 
-	if c.boffset == 0 {
+	if c.bol() {
 		c = cursor_location{c.line.prev, c.line_num - 1, len(c.line.prev.data)}
 		v.move_cursor_to(c)
 	} else {
@@ -848,6 +909,10 @@ func (v *view) action_insert(c cursor_location, data []byte) {
 		what:   action_insert,
 		data:   data,
 		cursor: c,
+		lines:  make([]*line, bytes.Count(data, []byte{'\n'})),
+	}
+	for i := range a.lines {
+		a.lines[i] = new(line)
 	}
 	a.apply(v)
 	v.buf.history.append(&a)
@@ -855,38 +920,16 @@ func (v *view) action_insert(c cursor_location, data []byte) {
 
 func (v *view) action_delete(c cursor_location, nbytes int) {
 	v.maybe_next_action_group()
-	d := copy_byte_slice(c.line.data, c.boffset, c.boffset+nbytes)
+	d := c.extract_bytes(nbytes)
 	a := action{
 		what:   action_delete,
 		data:   d,
 		cursor: c,
+		lines:  make([]*line, bytes.Count(d, []byte{'\n'})),
 	}
-	a.apply(v)
-	v.buf.history.append(&a)
-}
-
-func (v *view) action_insert_line(after *line, line_num int) *line {
-	v.maybe_next_action_group()
-	a := action{
-		what: action_insert_line,
-		cursor: cursor_location{
-			line:     &line{prev: after},
-			line_num: line_num,
-		},
-	}
-	a.apply(v)
-	v.buf.history.append(&a)
-	return a.cursor.line
-}
-
-func (v *view) action_delete_line(line *line, line_num int) {
-	v.maybe_next_action_group()
-	a := action{
-		what: action_delete_line,
-		cursor: cursor_location{
-			line:     line,
-			line_num: line_num,
-		},
+	for i := range a.lines {
+		a.lines[i] = c.line.next
+		c.line = c.line.next
 	}
 	a.apply(v)
 	v.buf.history.append(&a)
@@ -898,28 +941,14 @@ func (v *view) insert_rune(r rune) {
 	len := utf8.EncodeRune(data[:], r)
 	c := v.loc.cursor
 	v.action_insert(c, data[:len])
-	c.boffset += len
-	v.move_cursor_to(c)
-	v.dirty = dirty_everything
-}
-
-// If at the EOL, simply insert a new line, otherwise move contents of the
-// current line (from the cursor to the end of the line) to the newly created
-// line.
-func (v *view) new_line() {
-	c := v.loc.cursor
-	if !c.eol() {
-		data := copy_byte_slice(c.line.data, c.boffset, len(c.line.data))
-		v.action_delete(c, len(data))
-		nl := v.action_insert_line(c.line, c.line_num+1)
-		c = cursor_location{nl, c.line_num + 1, 0}
-		v.action_insert(c, data)
-		v.move_cursor_to(c)
+	if r == '\n' {
+		c.line = c.line.next
+		c.line_num++
+		c.boffset = 0
 	} else {
-		nl := v.action_insert_line(c.line, c.line_num+1)
-		c = cursor_location{nl, c.line_num + 1, 0}
-		v.move_cursor_to(c)
+		c.boffset += len
 	}
+	v.move_cursor_to(c)
 	v.dirty = dirty_everything
 }
 
@@ -930,28 +959,13 @@ func (v *view) delete_rune_backward() {
 	if c.bol() {
 		if c.first_line() {
 			// beginning of the file
+			v.parent.set_status("Beginning of buffer")
 			return
 		}
-		// move the contents of the current line to the previous line
-		var data []byte
-		if len(c.line.data) > 0 {
-			data = copy_byte_slice(c.line.data, 0, len(c.line.data))
-			v.action_delete(c, len(c.line.data))
-		}
-		v.action_delete_line(c.line, c.line_num)
-		if data != nil {
-			c := cursor_location{
-				c.line.prev,
-				c.line_num - 1,
-				len(c.line.prev.data),
-			}
-			v.action_insert(c, data)
-		}
-		c = cursor_location{
-			c.line.prev,
-			c.line_num - 1,
-			len(c.line.prev.data) - len(data),
-		}
+		c.line = c.line.prev
+		c.line_num--
+		c.boffset = len(c.line.data)
+		v.action_delete(c, 1)
 		v.move_cursor_to(c)
 		v.dirty = dirty_everything
 		return
@@ -972,24 +986,10 @@ func (v *view) delete_rune() {
 	if c.eol() {
 		if c.last_line() {
 			// end of the file
+			v.parent.set_status("End of buffer")
 			return
 		}
-		// move contents of the next line to the current line
-		var data []byte
-		if len(c.line.next.data) > 0 {
-			data = copy_byte_slice(c.line.next.data, 0,
-				len(c.line.next.data))
-			c := cursor_location{
-				c.line.next,
-				c.line_num + 1,
-				0,
-			}
-			v.action_delete(c, len(c.line.next.data))
-		}
-		v.action_delete_line(c.line.next, c.line_num+1)
-		if data != nil {
-			v.action_insert(c, data)
-		}
+		v.action_delete(c, 1)
 		v.dirty = dirty_everything
 		return
 	}
@@ -1162,8 +1162,6 @@ func (v *view) on_vcommand(cmd vcommand, arg rune) {
 		v.move_view_n_lines(-v.height() / 2)
 	case vcommand_insert_rune:
 		v.insert_rune(arg)
-	case vcommand_new_line:
-		v.new_line()
 	case vcommand_delete_rune_backward:
 		v.delete_rune_backward()
 	case vcommand_delete_rune:
@@ -1198,7 +1196,7 @@ func (v *view) on_key(ev *termbox.Event) {
 	case termbox.KeySpace:
 		v.on_vcommand(vcommand_insert_rune, ' ')
 	case termbox.KeyEnter, termbox.KeyCtrlJ:
-		v.on_vcommand(vcommand_new_line, 0)
+		v.on_vcommand(vcommand_insert_rune, '\n')
 	case termbox.KeyBackspace, termbox.KeyBackspace2:
 		v.on_vcommand(vcommand_delete_rune_backward, 0)
 	case termbox.KeyDelete, termbox.KeyCtrlD:
@@ -1450,42 +1448,15 @@ func (b *buffer) init_history() {
 type action_type int
 
 const (
-	action_insert      action_type = 1
-	action_insert_line action_type = 2
-	action_delete      action_type = -1
-	action_delete_line action_type = -2
+	action_insert action_type = 1
+	action_delete action_type = -1
 )
 
 type action struct {
 	what   action_type
 	data   []byte
 	cursor cursor_location
-}
-
-func (a *action) try_merge(b *action) bool {
-	if a.what != b.what {
-		// we can only merge things which have the same action type
-		return false
-	}
-	if a.cursor.line != b.cursor.line {
-		// we can only merge things which are on the same line
-		return false
-	}
-
-	// TODO compressing "delete_rune" actions is broken
-	switch a.what {
-	case action_insert, action_delete:
-		if a.cursor.boffset+len(a.data) == b.cursor.boffset {
-			a.data = append(a.data, b.data...)
-			return true
-		}
-		if b.cursor.boffset+len(b.data) == a.cursor.boffset {
-			*a, *b = *b, *a
-			a.data = append(a.data, b.data...)
-			return true
-		}
-	}
-	return false
+	lines  []*line
 }
 
 func (a *action) apply(v *view) {
@@ -1496,70 +1467,96 @@ func (a *action) revert(v *view) {
 	a.do(v, -a.what)
 }
 
+func (a *action) insert_line(line, prev *line, v *view) {
+	v.buf.lines_n++
+	bi := prev
+	ai := prev.next
+
+	// 'bi' is always a non-nil line
+	bi.next = line
+	line.prev = bi
+
+	// 'ai' could be nil (means we're inserting a new last line)
+	if ai == nil {
+		v.buf.last_line = line
+	} else {
+		ai.prev = line
+	}
+	line.next = ai
+}
+
+func (a *action) delete_line(line *line, v *view) {
+	v.buf.lines_n--
+	bi := line.prev
+	ai := line.next
+	if ai != nil {
+		ai.prev = bi
+	} else {
+		v.buf.last_line = bi
+	}
+	if bi != nil {
+		bi.next = ai
+	} else {
+		v.buf.first_line = ai
+	}
+	line.data = line.data[:0]
+}
+
+func (a *action) insert(v *view) {
+	var data_chunk []byte
+	nline := 0
+	offset := a.cursor.boffset
+	line := a.cursor.line
+	iter_lines(a.data, func(data []byte) {
+		if data[0] == '\n' {
+			if offset < len(line.data) {
+				// a case where we insert at the middle of the
+				// line, need to save that chunk for later
+				// insertion at the end of the operation
+				data_chunk = line.data[offset:]
+				line.data = line.data[:offset]
+			}
+			// insert a line
+			a.insert_line(a.lines[nline], line, v)
+			line = a.lines[nline]
+			nline++
+			offset = 0
+		} else {
+			// insert a chunk of data
+			line.data = insert_bytes(line.data, offset, data)
+			offset += len(data)
+		}
+	})
+	if data_chunk != nil {
+		line.data = append(line.data, data_chunk...)
+	}
+}
+
+func (a *action) delete(v *view) {
+	nline := 0
+	offset := a.cursor.boffset
+	line := a.cursor.line
+	iter_lines(a.data, func(data []byte) {
+		if data[0] == '\n' {
+			// append the contents of the deleted line the current line
+			line.data = append(line.data, a.lines[nline].data...)
+			// delete a line
+			a.delete_line(a.lines[nline], v)
+			nline++
+		} else {
+			// delete a chunk of data
+			copy(line.data[offset:], line.data[offset+len(data):])
+			line.data = line.data[:len(line.data)-len(data)]
+		}
+	})
+}
+
 func (a *action) do(v *view, what action_type) {
 	switch what {
 	case action_insert:
-		d := a.cursor.line.data
-		nl := len(d) + len(a.data)
-		d = grow_byte_slice(d, nl)
-		d = d[:nl]
-		copy(d[a.cursor.boffset+len(a.data):], d[a.cursor.boffset:])
-		copy(d[a.cursor.boffset:], a.data)
-		a.cursor.line.data = d
-		v.on_insert(a.cursor.line, a.cursor.line_num)
+		a.insert(v)
 	case action_delete:
-		d := a.cursor.line.data
-		copy(d[a.cursor.boffset:], d[a.cursor.boffset+len(a.data):])
-		d = d[:len(d)-len(a.data)]
-		a.cursor.line.data = d
-		v.on_delete(a.cursor.line, a.cursor.line_num)
-	case action_insert_line:
-		var bi, ai *line // before insertion and after insertion lines
-		v.buf.lines_n++
-		bi = a.cursor.line.prev
-		if bi == nil {
-			// inserting the first line
-			// bi == nil
-			// ai == v.buf.first_line
-
-			ai = v.buf.first_line
-			v.buf.first_line = a.cursor.line
-		} else {
-			ai = bi.next
-			if ai == nil {
-				// inserting the last line
-				// bi == v.buf.last_line
-				// ai == nil
-
-				v.buf.last_line = a.cursor.line
-			}
-		}
-
-		if bi != nil {
-			bi.next = a.cursor.line
-		}
-		if ai != nil {
-			ai.prev = a.cursor.line
-		}
-		a.cursor.line.prev = bi
-		a.cursor.line.next = ai
-
-		v.on_insert_line(a.cursor.line, a.cursor.line_num)
-	case action_delete_line:
-		v.buf.lines_n--
-		bi := a.cursor.line.prev
-		ai := a.cursor.line.next
-		if ai != nil {
-			ai.prev = bi
-		} else {
-			v.buf.last_line = bi
-		}
-		if bi != nil {
-			bi.next = ai
-		} else {
-			v.buf.first_line = ai
-		}
-		v.on_delete_line(a.cursor.line, a.cursor.line_num)
+		a.delete(v)
 	}
 	v.dirty = dirty_everything
 }
@@ -1573,6 +1570,7 @@ type action_group struct {
 }
 
 func (ag *action_group) append(a *action) {
+	/*
 	if len(ag.actions) != 0 {
 		// Oh, we have something in the group already, let's try to
 		// merge this action with the last one.
@@ -1581,7 +1579,16 @@ func (ag *action_group) append(a *action) {
 			return
 		}
 	}
+	*/
 	ag.actions = append(ag.actions, *a)
+}
+
+// Valid only as long as no new actions were added to the action group.
+func (ag *action_group) last_action() *action {
+	if len(ag.actions) == 0 {
+		return nil
+	}
+	return &ag.actions[len(ag.actions)-1]
 }
 
 //----------------------------------------------------------------------------
@@ -1706,7 +1713,6 @@ const (
 	// insertion commands
 	_vcommand_insertion_beg
 	vcommand_insert_rune
-	vcommand_new_line
 	_vcommand_insertion_end
 
 	// deletion commands
