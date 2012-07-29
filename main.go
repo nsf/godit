@@ -74,12 +74,10 @@ func iter_lines(data []byte, cb func([]byte)) {
 	}
 }
 
+
+
 //----------------------------------------------------------------------------
-// view_location
-//
-// This structure represents a view location in the buffer. It needs to be
-// separated from the view, because it's also being saved by the buffer (in case
-// if at the moment buffer has no views attached to it).
+// cursor location
 //----------------------------------------------------------------------------
 
 type cursor_location struct {
@@ -270,6 +268,14 @@ func (c *cursor_location) move_one_word_backward() bool {
 
 	return true
 }
+
+//----------------------------------------------------------------------------
+// view location
+//
+// This structure represents a view location in the buffer. It needs to be
+// separated from the view, because it's also being saved by the buffer (in case
+// if at the moment buffer has no views attached to it).
+//----------------------------------------------------------------------------
 
 type view_location struct {
 	cursor       cursor_location
@@ -1656,6 +1662,42 @@ func (a *action) deleted_lines() (int, int) {
 	return first, last
 }
 
+func (a *action) try_merge(b *action) bool {
+	if a.what != b.what {
+		// can only merge actions of the same type
+		return false
+	}
+
+	if a.cursor.line_num != b.cursor.line_num {
+		return false
+	}
+
+	if a.cursor.boffset == b.cursor.boffset {
+		pa, pb := a, b
+		if a.what == action_insert {
+			// on insertion merge as 'ba', on deletion as 'ab'
+			pa, pb = pb, pa
+		}
+		pa.data = append(pa.data, pb.data...)
+		pa.lines = append(pa.lines, pb.lines...)
+		*a = *pa
+		return true
+	}
+
+	// different boffsets, try to restore the sequence
+	pa, pb := a, b
+	if pb.cursor.boffset < pa.cursor.boffset {
+		pa, pb = pb, pa
+	}
+	if pa.cursor.boffset + len(pa.data) == pb.cursor.boffset {
+		pa.data = append(pa.data, pb.data...)
+		pa.lines = append(pa.lines, pb.lines...)
+		*a = *pa
+		return true
+	}
+	return false
+}
+
 type action_group struct {
 	actions []action
 	next    *action_group
@@ -1665,7 +1707,6 @@ type action_group struct {
 }
 
 func (ag *action_group) append(a *action) {
-	/*
 	if len(ag.actions) != 0 {
 		// Oh, we have something in the group already, let's try to
 		// merge this action with the last one.
@@ -1674,7 +1715,6 @@ func (ag *action_group) append(a *action) {
 			return
 		}
 	}
-	*/
 	ag.actions = append(ag.actions, *a)
 }
 
