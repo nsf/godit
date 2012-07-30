@@ -114,10 +114,13 @@ func (c *cursor_location) bol() bool {
 
 // returns the distance between two locations in bytes
 func (a cursor_location) distance(b cursor_location) int {
+	s := 1
 	if b.line_num < a.line_num {
 		a, b = b, a
+		s = -1
 	} else if a.line_num == b.line_num && b.boffset < a.boffset {
 		a, b = b, a
+		s = -1
 	}
 
 	n := 0
@@ -127,7 +130,7 @@ func (a cursor_location) distance(b cursor_location) int {
 		a.boffset = 0
 	}
 	n += b.boffset - a.boffset
-	return n
+	return n * s
 }
 
 func (c *cursor_location) extract_bytes(n int) []byte {
@@ -1085,6 +1088,38 @@ func (v *view) kill_word() {
 	}
 }
 
+func (v *view) kill_region() {
+	if !v.buf.is_mark_set() {
+		v.parent.set_status("The mark is not set now, so there is no region")
+		return
+	}
+
+	c1 := v.loc.cursor
+	c2 := v.buf.mark
+	d := c1.distance(c2)
+	switch {
+	case d == 0:
+		return
+	case d < 0:
+		d = -d
+		v.action_delete(c2, d)
+		v.move_cursor_to(c2)
+	default:
+		v.action_delete(c1, d)
+	}
+}
+
+func (v *view) set_mark() {
+	v.buf.mark = v.loc.cursor
+	v.parent.set_status("Mark set")
+}
+
+func (v *view) swap_cursor_and_mark() {
+	m := v.buf.mark
+	v.buf.mark = v.loc.cursor
+	v.move_cursor_to(m)
+}
+
 func (v *view) on_insert_adjust_top_line(a *action) {
 	if a.cursor.line_num < v.loc.top_line_num && len(a.lines) > 0 {
 		// inserted one or more lines above the view
@@ -1201,6 +1236,10 @@ func (v *view) on_vcommand(cmd vcommand, arg rune) {
 		v.maybe_move_view_n_lines(v.height() / 2)
 	case vcommand_move_view_half_backward:
 		v.move_view_n_lines(-v.height() / 2)
+	case vcommand_set_mark:
+		v.set_mark()
+	case vcommand_swap_cursor_and_mark:
+		v.swap_cursor_and_mark()
 	case vcommand_insert_rune:
 		v.insert_rune(arg)
 	case vcommand_delete_rune_backward:
@@ -1211,6 +1250,8 @@ func (v *view) on_vcommand(cmd vcommand, arg rune) {
 		v.kill_line()
 	case vcommand_kill_word:
 		v.kill_word()
+	case vcommand_kill_region:
+		v.kill_region()
 	case vcommand_undo:
 		v.undo()
 	case vcommand_redo:
@@ -1252,6 +1293,12 @@ func (v *view) on_key(ev *termbox.Event) {
 		v.on_vcommand(vcommand_redo, 0)
 	case termbox.KeyTab:
 		v.on_vcommand(vcommand_insert_rune, '\t')
+	case termbox.KeyCtrlSpace:
+		if ev.Ch == 0 {
+			v.set_mark()
+		}
+	case termbox.KeyCtrlW:
+		v.on_vcommand(vcommand_kill_region, 0)
 	}
 
 	if ev.Mod&termbox.ModAlt != 0 {
@@ -1359,6 +1406,7 @@ type buffer struct {
 	loc        view_location
 	lines_n    int
 	history    *action_group
+	mark       cursor_location
 
 	// absoulte path if there is any, empty line otherwise
 	path string
@@ -1491,6 +1539,10 @@ func (b *buffer) init_history() {
 	sentinel.next = first
 	first.prev = sentinel
 	b.history = sentinel
+}
+
+func (b *buffer) is_mark_set() bool {
+	return b.mark.line != nil
 }
 
 func (b *buffer) dump_history() {
@@ -1639,12 +1691,18 @@ func (a *action) do(v *view, what action_type) {
 		v.buf.other_views(v, func(v *view) {
 			v.on_insert(a)
 		})
+		if v.buf.is_mark_set() {
+			v.buf.mark.on_insert_adjust(a)
+		}
 	case action_delete:
 		a.delete(v)
 		v.on_delete_adjust_top_line(a)
 		v.buf.other_views(v, func(v *view) {
 			v.on_delete(a)
 		})
+		if v.buf.is_mark_set() {
+			v.buf.mark.on_delete_adjust(a)
+		}
 	}
 	v.dirty = dirty_everything
 }
@@ -1859,6 +1917,8 @@ const (
 	vcommand_move_cursor_end_of_file
 	vcommand_move_view_half_forward
 	vcommand_move_view_half_backward
+	vcommand_set_mark
+	vcommand_swap_cursor_and_mark
 	_vcommand_movement_end
 
 	// insertion commands
@@ -1872,6 +1932,7 @@ const (
 	vcommand_delete_rune
 	vcommand_kill_line
 	vcommand_kill_word
+	vcommand_kill_region
 	_vcommand_deletion_end
 
 	// history commands (undo/redo)
@@ -2112,25 +2173,28 @@ func (e extended_mode) init() {
 
 func (e extended_mode) on_key(ev *termbox.Event) {
 	g := e.godit
+	v := g.active.leaf
 
 	switch ev.Key {
 	case termbox.KeyCtrlC:
 		g.quitflag = true
-	}
-
-	switch ev.Ch {
-	case '2':
-		g.split_vertically()
-	case '3':
-		g.split_horizontally()
-	case 'o':
-		if g.views.left == g.active {
-			g.active = g.views.right
-		} else if g.views.right == g.active {
-			g.active = g.views.left
-		}
+	case termbox.KeyCtrlX:
+		v.on_vcommand(vcommand_swap_cursor_and_mark, 0)
 	default:
-		goto undefined
+		switch ev.Ch {
+		case '2':
+			g.split_vertically()
+		case '3':
+			g.split_horizontally()
+		case 'o':
+			if g.views.left == g.active {
+				g.active = g.views.right
+			} else if g.views.right == g.active {
+				g.active = g.views.left
+			}
+		default:
+			goto undefined
+		}
 	}
 
 	g.set_overlay_mode(nil)
