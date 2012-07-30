@@ -65,11 +65,11 @@ type view_location struct {
 //----------------------------------------------------------------------------
 
 type view struct {
+	view_location
 	parent  *godit       // view is owned by a godit instance
 	status  bytes.Buffer // temporary buffer for status bar text
 	buf     *buffer      // currently displayed buffer
 	uibuf   tulib.Buffer
-	loc     view_location
 	dirty   dirty_flag
 	oneline bool
 }
@@ -89,7 +89,7 @@ func (v *view) attach(b *buffer) {
 
 	v.detach()
 	v.buf = b
-	v.loc = b.loc
+	v.view_location = b.loc
 	b.add_view(v)
 	v.dirty = dirty_everything
 }
@@ -145,7 +145,7 @@ func (v *view) draw_cursor_line(line *line, coff int) {
 	tabstop := 0
 	linedata := line.data
 	for {
-		rx := x - v.loc.line_voffset
+		rx := x - v.line_voffset
 		if len(linedata) == 0 {
 			break
 		}
@@ -164,7 +164,7 @@ func (v *view) draw_cursor_line(line *line, coff int) {
 		if r == '\t' {
 			// fill with spaces to the next tabstop
 			for ; x < tabstop; x++ {
-				rx := x - v.loc.line_voffset
+				rx := x - v.line_voffset
 				if rx >= v.uibuf.Width {
 					break
 				}
@@ -182,7 +182,7 @@ func (v *view) draw_cursor_line(line *line, coff int) {
 		linedata = linedata[rlen:]
 	}
 
-	if v.loc.line_voffset != 0 {
+	if v.line_voffset != 0 {
 		v.uibuf.Cells[coff].Ch = '←'
 	}
 }
@@ -196,14 +196,14 @@ func (v *view) draw_contents() {
 	})
 
 	// draw lines
-	line := v.loc.top_line
+	line := v.top_line
 	coff := 0
 	for y, h := 0, v.height(); y < h; y++ {
 		if line == nil {
 			break
 		}
 
-		if line == v.loc.cursor.line {
+		if line == v.cursor.line {
 			// special case, cursor line
 			v.draw_cursor_line(line, coff)
 			coff += v.uibuf.Width
@@ -271,7 +271,7 @@ func (v *view) draw_status() {
 	namel := v.status.Len()
 	lp.Fg = termbox.AttrReverse
 	v.status.Reset()
-	fmt.Fprintf(&v.status, "(%d, %d)  ", v.loc.cursor.line_num, v.loc.cursor_voffset)
+	fmt.Fprintf(&v.status, "(%d, %d)  ", v.cursor.line_num, v.cursor_voffset)
 	v.uibuf.DrawLabel(tulib.Rect{3 + namel, v.height(), v.uibuf.Width, 1},
 		&lp, v.status.Bytes())
 	v.status.Reset()
@@ -296,18 +296,18 @@ func (v *view) move_top_line_n_times(n int) {
 		return
 	}
 
-	top := v.loc.top_line
+	top := v.top_line
 	for top.prev != nil && n < 0 {
 		top = top.prev
-		v.loc.top_line_num--
+		v.top_line_num--
 		n++
 	}
 	for top.next != nil && n > 0 {
 		top = top.next
-		v.loc.top_line_num++
+		v.top_line_num++
 		n--
 	}
-	v.loc.top_line = top
+	v.top_line = top
 }
 
 // Move cursor line 'n' times forward or backward.
@@ -316,26 +316,26 @@ func (v *view) move_cursor_line_n_times(n int) {
 		return
 	}
 
-	cursor := v.loc.cursor.line
+	cursor := v.cursor.line
 	for cursor.prev != nil && n < 0 {
 		cursor = cursor.prev
-		v.loc.cursor.line_num--
+		v.cursor.line_num--
 		n++
 	}
 	for cursor.next != nil && n > 0 {
 		cursor = cursor.next
-		v.loc.cursor.line_num++
+		v.cursor.line_num++
 		n--
 	}
-	v.loc.cursor.line = cursor
+	v.cursor.line = cursor
 }
 
 // When 'top_line' was changed, call this function to possibly adjust the
 // 'cursor_line'.
 func (v *view) adjust_cursor_line() {
 	vt := v.vertical_threshold()
-	cursor := v.loc.cursor.line
-	co := v.loc.cursor.line_num - v.loc.top_line_num
+	cursor := v.cursor.line
+	co := v.cursor.line_num - v.top_line_num
 	h := v.height()
 
 	if cursor.next != nil && co < vt {
@@ -346,13 +346,13 @@ func (v *view) adjust_cursor_line() {
 		v.move_cursor_line_n_times((h - vt) - co - 1)
 	}
 
-	if cursor != v.loc.cursor.line {
-		cursor = v.loc.cursor.line
-		bo, co, vo := cursor.find_closest_offsets(v.loc.last_cursor_voffset)
-		v.loc.cursor.boffset = bo
-		v.loc.cursor_coffset = co
-		v.loc.cursor_voffset = vo
-		v.loc.line_voffset = 0
+	if cursor != v.cursor.line {
+		cursor = v.cursor.line
+		bo, co, vo := cursor.find_closest_offsets(v.last_cursor_voffset)
+		v.cursor.boffset = bo
+		v.cursor_coffset = co
+		v.cursor_voffset = vo
+		v.line_voffset = 0
 		v.adjust_line_voffset()
 		v.dirty = dirty_everything
 	}
@@ -362,8 +362,8 @@ func (v *view) adjust_cursor_line() {
 // 'top_line'.
 func (v *view) adjust_top_line() {
 	vt := v.vertical_threshold()
-	top := v.loc.top_line
-	co := v.loc.cursor.line_num - v.loc.top_line_num
+	top := v.top_line
+	co := v.cursor.line_num - v.top_line_num
 	h := v.height()
 
 	if top.next != nil && co >= h-vt {
@@ -382,8 +382,8 @@ func (v *view) adjust_top_line() {
 func (v *view) adjust_line_voffset() {
 	ht := v.horizontal_threshold()
 	w := v.uibuf.Width
-	vo := v.loc.line_voffset
-	cvo := v.loc.cursor_voffset
+	vo := v.line_voffset
+	cvo := v.cursor_voffset
 	threshold := w - 1
 	if vo != 0 {
 		threshold -= ht - 1
@@ -400,15 +400,15 @@ func (v *view) adjust_line_voffset() {
 		}
 	}
 
-	if v.loc.line_voffset != vo {
-		v.loc.line_voffset = vo
+	if v.line_voffset != vo {
+		v.line_voffset = vo
 		v.dirty = dirty_everything
 	}
 }
 
 func (v *view) cursor_position() (int, int) {
-	y := v.loc.cursor.line_num - v.loc.top_line_num
-	x := v.loc.cursor_voffset - v.loc.line_voffset
+	y := v.cursor.line_num - v.top_line_num
+	x := v.cursor_voffset - v.line_voffset
 	return x, y
 }
 
@@ -419,30 +419,30 @@ func (v *view) cursor_position() (int, int) {
 func (v *view) move_cursor_to(c cursor_location) {
 	v.dirty |= dirty_status
 	if c.boffset < 0 {
-		bo, co, vo := c.line.find_closest_offsets(v.loc.last_cursor_voffset)
-		v.loc.cursor.boffset = bo
-		v.loc.cursor_coffset = co
-		v.loc.cursor_voffset = vo
+		bo, co, vo := c.line.find_closest_offsets(v.last_cursor_voffset)
+		v.cursor.boffset = bo
+		v.cursor_coffset = co
+		v.cursor_voffset = vo
 	} else {
 		vo, co := c.line.voffset_coffset(c.boffset)
-		v.loc.cursor.boffset = c.boffset
-		v.loc.cursor_coffset = co
-		v.loc.cursor_voffset = vo
+		v.cursor.boffset = c.boffset
+		v.cursor_coffset = co
+		v.cursor_voffset = vo
 	}
-	if c.line == v.loc.cursor.line {
-		v.loc.last_cursor_voffset = v.loc.cursor_voffset
+	if c.line == v.cursor.line {
+		v.last_cursor_voffset = v.cursor_voffset
 	} else {
-		v.loc.line_voffset = 0
+		v.line_voffset = 0
 	}
-	v.loc.cursor.line = c.line
-	v.loc.cursor.line_num = c.line_num
+	v.cursor.line = c.line
+	v.cursor.line_num = c.line_num
 	v.adjust_line_voffset()
 	v.adjust_top_line()
 }
 
 // Move cursor one character forward.
 func (v *view) move_cursor_forward() {
-	c := v.loc.cursor
+	c := v.cursor
 	if c.last_line() && c.eol() {
 		v.parent.set_status("End of buffer")
 		return
@@ -454,7 +454,7 @@ func (v *view) move_cursor_forward() {
 
 // Move cursor one character backward.
 func (v *view) move_cursor_backward() {
-	c := v.loc.cursor
+	c := v.cursor
 	if c.first_line() && c.bol() {
 		v.parent.set_status("Beginning of buffer")
 		return
@@ -466,7 +466,7 @@ func (v *view) move_cursor_backward() {
 
 // Move cursor to the next line.
 func (v *view) move_cursor_next_line() {
-	c := v.loc.cursor
+	c := v.cursor
 	if !c.last_line() {
 		c = cursor_location{c.line.next, c.line_num + 1, -1}
 		v.move_cursor_to(c)
@@ -477,7 +477,7 @@ func (v *view) move_cursor_next_line() {
 
 // Move cursor to the previous line.
 func (v *view) move_cursor_prev_line() {
-	c := v.loc.cursor
+	c := v.cursor
 	if !c.first_line() {
 		c = cursor_location{c.line.prev, c.line_num - 1, -1}
 		v.move_cursor_to(c)
@@ -488,14 +488,14 @@ func (v *view) move_cursor_prev_line() {
 
 // Move cursor to the beginning of the line.
 func (v *view) move_cursor_beginning_of_line() {
-	c := v.loc.cursor
+	c := v.cursor
 	c.move_beginning_of_line()
 	v.move_cursor_to(c)
 }
 
 // Move cursor to the end of the line.
 func (v *view) move_cursor_end_of_line() {
-	c := v.loc.cursor
+	c := v.cursor
 	c.move_end_of_line()
 	v.move_cursor_to(c)
 }
@@ -514,7 +514,7 @@ func (v *view) move_cursor_end_of_file() {
 
 // Move cursor to the end of the next (or current) word.
 func (v *view) move_cursor_word_forward() {
-	c := v.loc.cursor
+	c := v.cursor
 	ok := c.move_one_word_forward()
 	v.move_cursor_to(c)
 	if !ok {
@@ -523,7 +523,7 @@ func (v *view) move_cursor_word_forward() {
 }
 
 func (v *view) move_cursor_word_backward() {
-	c := v.loc.cursor
+	c := v.cursor
 	ok := c.move_one_word_backward()
 	v.move_cursor_to(c)
 	if !ok {
@@ -533,10 +533,10 @@ func (v *view) move_cursor_word_backward() {
 
 // Move view 'n' lines forward or backward.
 func (v *view) move_view_n_lines(n int) {
-	prevtop := v.loc.top_line_num
+	prevtop := v.top_line_num
 	v.move_top_line_n_times(n)
 	v.adjust_cursor_line()
-	if prevtop != v.loc.top_line_num {
+	if prevtop != v.top_line_num {
 		v.dirty = dirty_everything
 	}
 }
@@ -547,7 +547,7 @@ func (v *view) can_move_top_line_n_times(n int) bool {
 		return true
 	}
 
-	top := v.loc.top_line
+	top := v.top_line
 	for top.prev != nil && n < 0 {
 		top = top.prev
 		n++
@@ -582,7 +582,7 @@ func (v *view) maybe_next_action_group() {
 	b.history.prev = prev
 	b.history.next = nil
 	b.history.actions = nil
-	b.history.before = v.loc.cursor
+	b.history.before = v.cursor
 }
 
 func (v *view) finalize_action_group() {
@@ -592,7 +592,7 @@ func (v *view) finalize_action_group() {
 	// (that are supposed to finalize action group)
 	if b.history.next == nil {
 		b.history.next = new(action_group)
-		b.history.after = v.loc.cursor
+		b.history.after = v.cursor
 	}
 }
 
@@ -613,7 +613,7 @@ func (v *view) undo() {
 		a.revert(v)
 	}
 	v.move_cursor_to(b.history.before)
-	v.loc.last_cursor_voffset = v.loc.cursor_voffset
+	v.last_cursor_voffset = v.cursor_voffset
 	b.history = b.history.prev
 }
 
@@ -636,7 +636,7 @@ func (v *view) redo() {
 		a.apply(v)
 	}
 	v.move_cursor_to(b.history.after)
-	v.loc.last_cursor_voffset = v.loc.cursor_voffset
+	v.last_cursor_voffset = v.cursor_voffset
 }
 
 func (v *view) action_insert(c cursor_location, data []byte) {
@@ -675,7 +675,7 @@ func (v *view) action_delete(c cursor_location, nbytes int) {
 func (v *view) insert_rune(r rune) {
 	var data [utf8.UTFMax]byte
 	len := utf8.EncodeRune(data[:], r)
-	c := v.loc.cursor
+	c := v.cursor
 	v.action_insert(c, data[:len])
 	if r == '\n' {
 		c.line = c.line.next
@@ -691,7 +691,7 @@ func (v *view) insert_rune(r rune) {
 // If at the beginning of the line, move contents of the current line to the end
 // of the previous line. Otherwise, erase one character backward.
 func (v *view) delete_rune_backward() {
-	c := v.loc.cursor
+	c := v.cursor
 	if c.bol() {
 		if c.first_line() {
 			// beginning of the file
@@ -718,7 +718,7 @@ func (v *view) delete_rune_backward() {
 // erasing the next line after that. Otherwise, delete one character under the
 // cursor.
 func (v *view) delete_rune() {
-	c := v.loc.cursor
+	c := v.cursor
 	if c.eol() {
 		if c.last_line() {
 			// end of the file
@@ -738,7 +738,7 @@ func (v *view) delete_rune() {
 // If not at the EOL, remove contents of the current line from the cursor to the
 // end. Otherwise behave like 'delete'.
 func (v *view) kill_line() {
-	c := v.loc.cursor
+	c := v.cursor
 	if !c.eol() {
 		// kill data from the cursor to the EOL
 		v.action_delete(c, len(c.line.data)-c.boffset)
@@ -749,7 +749,7 @@ func (v *view) kill_line() {
 }
 
 func (v *view) kill_word() {
-	c1 := v.loc.cursor
+	c1 := v.cursor
 	c2 := c1
 	c2.move_one_word_forward()
 	d := c1.distance(c2)
@@ -764,7 +764,7 @@ func (v *view) kill_region() {
 		return
 	}
 
-	c1 := v.loc.cursor
+	c1 := v.cursor
 	c2 := v.buf.mark
 	d := c1.distance(c2)
 	switch {
@@ -780,46 +780,46 @@ func (v *view) kill_region() {
 }
 
 func (v *view) set_mark() {
-	v.buf.mark = v.loc.cursor
+	v.buf.mark = v.cursor
 	v.parent.set_status("Mark set")
 }
 
 func (v *view) swap_cursor_and_mark() {
 	m := v.buf.mark
-	v.buf.mark = v.loc.cursor
+	v.buf.mark = v.cursor
 	v.move_cursor_to(m)
 }
 
 func (v *view) on_insert_adjust_top_line(a *action) {
-	if a.cursor.line_num < v.loc.top_line_num && len(a.lines) > 0 {
+	if a.cursor.line_num < v.top_line_num && len(a.lines) > 0 {
 		// inserted one or more lines above the view
-		v.loc.top_line_num += len(a.lines)
+		v.top_line_num += len(a.lines)
 		v.dirty |= dirty_status
 	}
 }
 
 func (v *view) on_delete_adjust_top_line(a *action) {
-	if a.cursor.line_num < v.loc.top_line_num {
+	if a.cursor.line_num < v.top_line_num {
 		// deletion above the top line
 		if len(a.lines) == 0 {
 			return
 		}
 
-		topnum := v.loc.top_line_num
+		topnum := v.top_line_num
 		first, last := a.deleted_lines()
 		if first <= topnum && topnum <= last {
 			// deleted the top line, adjust the pointers
 			if a.cursor.line.next != nil {
-				v.loc.top_line = a.cursor.line.next
-				v.loc.top_line_num = a.cursor.line_num + 1
+				v.top_line = a.cursor.line.next
+				v.top_line_num = a.cursor.line_num + 1
 			} else {
-				v.loc.top_line = a.cursor.line
-				v.loc.top_line_num = a.cursor.line_num
+				v.top_line = a.cursor.line
+				v.top_line_num = a.cursor.line_num
 			}
 			v.dirty = dirty_everything
 		} else {
 			// no need to worry
-			v.loc.top_line_num -= len(a.lines)
+			v.top_line_num -= len(a.lines)
 			v.dirty |= dirty_status
 		}
 	}
@@ -827,50 +827,50 @@ func (v *view) on_delete_adjust_top_line(a *action) {
 
 func (v *view) on_insert(a *action) {
 	v.on_insert_adjust_top_line(a)
-	if v.loc.top_line_num+v.height() <= a.cursor.line_num {
+	if v.top_line_num+v.height() <= a.cursor.line_num {
 		// inserted something below the view, don't care
 		return
 	}
-	if a.cursor.line_num < v.loc.top_line_num {
+	if a.cursor.line_num < v.top_line_num {
 		// inserted something above the top line
 		if len(a.lines) > 0 {
 			// inserted one or more lines, adjust line numbers
-			v.loc.cursor.line_num += len(a.lines)
+			v.cursor.line_num += len(a.lines)
 			v.dirty |= dirty_status
 		}
 		return
 	}
-	c := v.loc.cursor
+	c := v.cursor
 	c.on_insert_adjust(a)
 	v.move_cursor_to(c)
-	v.loc.last_cursor_voffset = v.loc.cursor_voffset
+	v.last_cursor_voffset = v.cursor_voffset
 	v.dirty = dirty_everything
 }
 
 func (v *view) on_delete(a *action) {
 	v.on_delete_adjust_top_line(a)
-	if v.loc.top_line_num+v.height() <= a.cursor.line_num {
+	if v.top_line_num+v.height() <= a.cursor.line_num {
 		// deleted something below the view, don't care
 		return
 	}
-	if a.cursor.line_num < v.loc.top_line_num {
+	if a.cursor.line_num < v.top_line_num {
 		// deletion above the top line
 		if len(a.lines) == 0 {
 			return
 		}
 
 		_, last := a.deleted_lines()
-		if last < v.loc.top_line_num {
+		if last < v.top_line_num {
 			// no need to worry
-			v.loc.cursor.line_num -= len(a.lines)
+			v.cursor.line_num -= len(a.lines)
 			v.dirty |= dirty_status
 			return
 		}
 	}
-	c := v.loc.cursor
+	c := v.cursor
 	c.on_delete_adjust(a)
 	v.move_cursor_to(c)
-	v.loc.last_cursor_voffset = v.loc.cursor_voffset
+	v.last_cursor_voffset = v.cursor_voffset
 	v.dirty = dirty_everything
 }
 
@@ -996,7 +996,7 @@ func (v *view) dump_info() {
 		fmt.Fprintf(os.Stderr, format, args...)
 	}
 
-	p("Top line num: %d\n", v.loc.top_line_num)
+	p("Top line num: %d\n", v.top_line_num)
 }
 
 //----------------------------------------------------------------------------
