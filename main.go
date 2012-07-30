@@ -394,17 +394,6 @@ func (v *view) width() int {
 	return v.uibuf.Width
 }
 
-// Returns true if the line number 'line_num' is in the view.
-func (v *view) in_view(line_num int) bool {
-	if line_num < v.loc.top_line_num {
-		return false
-	}
-	if line_num >= v.loc.top_line_num+v.height() {
-		return false
-	}
-	return true
-}
-
 // This function is similar to what happens inside 'draw', but it contains a
 // certain amount of specific code related to 'loc.line_voffset'. You shouldn't
 // use it directly, call 'draw' instead.
@@ -874,7 +863,6 @@ func (v *view) undo() {
 	// undo action causes finalization, always
 	v.finalize_action_group()
 
-	v.move_cursor_to(b.history.after)
 	// undo invariant tells us 'len(b.history.actions) != 0' in case if this is
 	// not a sentinel, revert the actions in the current action group
 	for i := len(b.history.actions) - 1; i >= 0; i-- {
@@ -900,7 +888,6 @@ func (v *view) redo() {
 
 	// move one entry forward, and redo all its actions
 	b.history = b.history.next
-	v.move_cursor_to(b.history.before)
 	for i := range b.history.actions {
 		a := &b.history.actions[i]
 		a.apply(v)
@@ -1028,7 +1015,7 @@ func (v *view) kill_word() {
 	}
 }
 
-func (v *view) on_insert(a *action) {
+func (v *view) on_insert_adjust_top_line(a *action) {
 	if v.loc.top_line_num+v.height() <= a.cursor.line_num {
 		// inserted something below the view, don't care
 		return
@@ -1038,6 +1025,53 @@ func (v *view) on_insert(a *action) {
 		if len(a.lines) > 0 {
 			// inserted one or more lines, adjust line numbers
 			v.loc.top_line_num += len(a.lines)
+			v.dirty |= dirty_status
+		}
+		return
+	}
+}
+
+func (v *view) on_delete_adjust_top_line(a *action) {
+	if v.loc.top_line_num+v.height() <= a.cursor.line_num {
+		// deleted something below the view, don't care
+		return
+	}
+	if a.cursor.line_num < v.loc.top_line_num {
+		// deletion above the top line
+		if len(a.lines) == 0 {
+			return
+		}
+
+		topnum := v.loc.top_line_num
+		first, last := a.deleted_lines()
+		if first <= topnum && topnum <= last {
+			// deleted the top line, adjust the pointers
+			if a.cursor.line.next != nil {
+				v.loc.top_line = a.cursor.line.next
+				v.loc.top_line_num = a.cursor.line_num+1
+			} else {
+				v.loc.top_line = a.cursor.line
+				v.loc.top_line_num = a.cursor.line_num
+			}
+		} else {
+			// no need to worry
+			v.loc.top_line_num -= len(a.lines)
+			v.dirty |= dirty_status
+			return
+		}
+	}
+}
+
+func (v *view) on_insert(a *action) {
+	v.on_insert_adjust_top_line(a)
+	if v.loc.top_line_num+v.height() <= a.cursor.line_num {
+		// inserted something below the view, don't care
+		return
+	}
+	if a.cursor.line_num < v.loc.top_line_num {
+		// inserted something above the top line
+		if len(a.lines) > 0 {
+			// inserted one or more lines, adjust line numbers
 			v.loc.cursor.line_num += len(a.lines)
 			v.dirty |= dirty_status
 		}
@@ -1086,6 +1120,7 @@ func (v *view) on_insert(a *action) {
 }
 
 func (v *view) on_delete(a *action) {
+	v.on_delete_adjust_top_line(a)
 	if v.loc.top_line_num+v.height() <= a.cursor.line_num {
 		// deleted something below the view, don't care
 		return
@@ -1096,20 +1131,9 @@ func (v *view) on_delete(a *action) {
 			return
 		}
 
-		topnum := v.loc.top_line_num
-		first, last := a.deleted_lines()
-		if first <= topnum && topnum <= last {
-			// deleted the top line, adjust the pointers
-			if a.cursor.line.next != nil {
-				v.loc.top_line = a.cursor.line.next
-				v.loc.top_line_num = a.cursor.line_num+1
-			} else {
-				v.loc.top_line = a.cursor.line
-				v.loc.top_line_num = a.cursor.line_num
-			}
-		} else {
+		_, last := a.deleted_lines()
+		if last < v.loc.top_line_num {
 			// no need to worry
-			v.loc.top_line_num -= len(a.lines)
 			v.loc.cursor.line_num -= len(a.lines)
 			v.dirty |= dirty_status
 			return
@@ -1269,7 +1293,14 @@ func (v *view) on_key(ev *termbox.Event) {
 	} else if ev.Ch != 0 {
 		v.on_vcommand(vcommand_insert_rune, ev.Ch)
 	}
+}
 
+func (v *view) dump_info() {
+	p := func(format string, args ...interface{}) {
+		fmt.Fprintf(os.Stderr, format, args...)
+	}
+
+	p("Top line num: %d\n", v.loc.top_line_num)
 }
 
 //----------------------------------------------------------------------------
@@ -1625,11 +1656,13 @@ func (a *action) do(v *view, what action_type) {
 	switch what {
 	case action_insert:
 		a.insert(v)
+		v.on_insert_adjust_top_line(a)
 		v.buf.other_views(v, func(v *view) {
 			v.on_insert(a)
 		})
 	case action_delete:
 		a.delete(v)
+		v.on_delete_adjust_top_line(a)
 		v.buf.other_views(v, func(v *view) {
 			v.on_delete(a)
 		})
@@ -2011,6 +2044,7 @@ func (g *godit) on_sys_key(ev *termbox.Event) {
 		g.set_status("Quit")
 	case termbox.KeyF1:
 		g.buffers[0].dump_history()
+		g.active.leaf.dump_info()
 	}
 }
 
