@@ -1,12 +1,12 @@
 package main
 
 import (
+	"bufio"
+	"fmt"
 	"io"
-	"unicode/utf8"
 	"os"
 	"path/filepath"
-	"fmt"
-	"bufio"
+	"unicode/utf8"
 )
 
 //----------------------------------------------------------------------------

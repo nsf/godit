@@ -1,8 +1,8 @@
 package main
 
 import (
-	"unicode"
 	"bytes"
+	"unicode"
 )
 
 func grow_byte_slice(s []byte, desired_cap int) []byte {
@@ -49,13 +49,13 @@ func iter_lines(data []byte, cb func([]byte)) {
 			cb(data[offset:])
 			return
 		case 0:
-			cb(data[offset:offset+1])
+			cb(data[offset : offset+1])
 			offset++
 			continue
 		}
 
-		cb(data[offset:offset+i])
-		cb(data[offset+i:offset+i+1])
-		offset += i+1
+		cb(data[offset : offset+i])
+		cb(data[offset+i : offset+i+1])
+		offset += i + 1
 	}
 }

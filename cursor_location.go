@@ -1,8 +1,8 @@
 package main
 
 import (
-	"unicode/utf8"
 	"bytes"
+	"unicode/utf8"
 )
 
 //----------------------------------------------------------------------------
@@ -73,7 +73,7 @@ func (c *cursor_location) extract_bytes(n int) []byte {
 			if n < nb {
 				nb = n
 			}
-			buf.Write(line.data[offset:offset+nb])
+			buf.Write(line.data[offset : offset+nb])
 			n -= nb
 			offset += nb
 		case offset == len(line.data):

@@ -2,11 +2,11 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"github.com/nsf/termbox-go"
 	"github.com/nsf/tulib"
-	"unicode/utf8"
-	"fmt"
 	"os"
+	"unicode/utf8"
 )
 
 //----------------------------------------------------------------------------
@@ -59,6 +59,9 @@ type view_location struct {
 
 //----------------------------------------------------------------------------
 // view
+//
+// Think of it as a window. It draws contents from a portion of a buffer into
+// 'uibuf' and maintains things like cursor position.
 //----------------------------------------------------------------------------
 
 type view struct {
@@ -808,7 +811,7 @@ func (v *view) on_delete_adjust_top_line(a *action) {
 			// deleted the top line, adjust the pointers
 			if a.cursor.line.next != nil {
 				v.loc.top_line = a.cursor.line.next
-				v.loc.top_line_num = a.cursor.line_num+1
+				v.loc.top_line_num = a.cursor.line_num + 1
 			} else {
 				v.loc.top_line = a.cursor.line
 				v.loc.top_line_num = a.cursor.line_num

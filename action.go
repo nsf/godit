@@ -5,7 +5,10 @@ import (
 )
 
 //----------------------------------------------------------------------------
-// action & action groups
+// action
+//
+// A single entity of undo/redo history. All changes to contents of a buffer
+// must be initiated by an action.
 //----------------------------------------------------------------------------
 
 type action_type int
@@ -194,7 +197,7 @@ func (a *action) try_merge(b *action) bool {
 	if pb.cursor.boffset < pa.cursor.boffset {
 		pa, pb = pb, pa
 	}
-	if pa.cursor.boffset + len(pa.data) == pb.cursor.boffset {
+	if pa.cursor.boffset+len(pa.data) == pb.cursor.boffset {
 		pa.data = append(pa.data, pb.data...)
 		pa.lines = append(pa.lines, pb.lines...)
 		*a = *pa
@@ -202,6 +205,10 @@ func (a *action) try_merge(b *action) bool {
 	}
 	return false
 }
+
+//----------------------------------------------------------------------------
+// action group
+//----------------------------------------------------------------------------
 
 type action_group struct {
 	actions []action
