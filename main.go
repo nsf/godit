@@ -269,6 +269,76 @@ func (c *cursor_location) move_one_word_backward() bool {
 	return true
 }
 
+func (c *cursor_location) on_insert_adjust(a *action) {
+	if a.cursor.line_num > c.line_num {
+		return
+	}
+	if a.cursor.line_num < c.line_num {
+		// inserted something above the cursor, adjust it
+		c.line_num += len(a.lines)
+		return
+	}
+
+	// insertion on the cursor line
+	if a.cursor.boffset < c.boffset {
+		// insertion before the cursor, move cursor along with insertion
+		if len(a.lines) == 0 {
+			// no lines were inserted, simply adjust the offset
+			c.boffset += len(a.data)
+		} else {
+			// one or more lines were inserted, adjust cursor
+			// respectively
+			c.line = a.last_line()
+			c.line_num += len(a.lines)
+			c.boffset = a.last_line_affection_len() +
+				c.boffset - a.cursor.boffset
+		}
+	}
+}
+
+func (c *cursor_location) on_delete_adjust(a *action) {
+	if a.cursor.line_num > c.line_num {
+		return
+	}
+	if a.cursor.line_num < c.line_num {
+		// deletion above the cursor line, may touch the cursor location
+		if len(a.lines) == 0 {
+			// no lines were deleted, no things to adjust
+			return
+		}
+
+		first, last := a.deleted_lines()
+		if first <= c.line_num && c.line_num <= last {
+			// deleted the cursor line, see how much it affects it
+			n := 0
+			if last == c.line_num {
+				n = c.boffset - a.last_line_affection_len()
+				if n < 0 {
+					n = 0
+				}
+			}
+			*c = a.cursor
+			c.boffset += n
+		} else {
+			// phew.. no worries
+			c.line_num -= len(a.lines)
+			return
+		}
+	}
+
+	// the last case is deletion on the cursor line, see what was deleted
+	if a.cursor.boffset >= c.boffset {
+		// deleted something after cursor, don't care
+		return
+	}
+
+	n := c.boffset - (a.cursor.boffset + a.first_line_affection_len())
+	if n < 0 {
+		n = 0
+	}
+	c.boffset = a.cursor.boffset + n
+}
+
 //----------------------------------------------------------------------------
 // view location
 //
@@ -1016,26 +1086,14 @@ func (v *view) kill_word() {
 }
 
 func (v *view) on_insert_adjust_top_line(a *action) {
-	if v.loc.top_line_num+v.height() <= a.cursor.line_num {
-		// inserted something below the view, don't care
-		return
-	}
-	if a.cursor.line_num < v.loc.top_line_num {
-		// inserted something above the view
-		if len(a.lines) > 0 {
-			// inserted one or more lines, adjust line numbers
-			v.loc.top_line_num += len(a.lines)
-			v.dirty |= dirty_status
-		}
-		return
+	if a.cursor.line_num < v.loc.top_line_num && len(a.lines) > 0 {
+		// inserted one or more lines above the view
+		v.loc.top_line_num += len(a.lines)
+		v.dirty |= dirty_status
 	}
 }
 
 func (v *view) on_delete_adjust_top_line(a *action) {
-	if v.loc.top_line_num+v.height() <= a.cursor.line_num {
-		// deleted something below the view, don't care
-		return
-	}
 	if a.cursor.line_num < v.loc.top_line_num {
 		// deletion above the top line
 		if len(a.lines) == 0 {
@@ -1053,11 +1111,11 @@ func (v *view) on_delete_adjust_top_line(a *action) {
 				v.loc.top_line = a.cursor.line
 				v.loc.top_line_num = a.cursor.line_num
 			}
+			v.dirty = dirty_everything
 		} else {
 			// no need to worry
 			v.loc.top_line_num -= len(a.lines)
 			v.dirty |= dirty_status
-			return
 		}
 	}
 }
@@ -1077,45 +1135,10 @@ func (v *view) on_insert(a *action) {
 		}
 		return
 	}
-	if a.cursor.line_num > v.loc.cursor.line_num {
-		// inserted something in the view, but below the cursor, simply
-		// mark everything as dirty
-		v.dirty = dirty_everything
-		return
-	}
-	if a.cursor.line_num < v.loc.cursor.line_num {
-		// inserted something above the cursor, adjust it and mark
-		// everything as dirty
-		v.loc.cursor.line_num += len(a.lines)
-		v.adjust_top_line()
-		v.dirty = dirty_everything
-		return
-	}
-
-	// the last case is insertion at the cursor line, it's the most
-	// complicated case
 	c := v.loc.cursor
-	if a.cursor.boffset < c.boffset {
-		// insertion before the cursor, move cursor together with
-		// insertion point
-		if len(a.lines) == 0 {
-			// no lines were inserted, simply adjust the offset
-			c.boffset += len(a.data)
-			v.move_cursor_to(c)
-		} else {
-			// one or more lines were inserted, adjust cursor
-			// respectively
-			c.line = a.last_line()
-			c.line_num += len(a.lines)
-			c.boffset = a.last_line_affection_len() +
-				c.boffset - a.cursor.boffset
-			v.move_cursor_to(c)
-
-			// update 'last_cursor_voffset' manually here, because it
-			// won't be updated automatically by 'move_cursor_to'
-			v.loc.last_cursor_voffset = v.loc.cursor_voffset
-		}
-	}
+	c.on_insert_adjust(a)
+	v.move_cursor_to(c)
+	v.loc.last_cursor_voffset = v.loc.cursor_voffset
 	v.dirty = dirty_everything
 }
 
@@ -1139,55 +1162,11 @@ func (v *view) on_delete(a *action) {
 			return
 		}
 	}
-	if a.cursor.line_num > v.loc.cursor.line_num {
-		// deleted something in the view, but below the cursor, simply
-		// mark everything as dirty
-		v.dirty = dirty_everything
-		return
-	}
-	if a.cursor.line_num < v.loc.cursor.line_num {
-		// deletion above the cursor line, may touch the cursor location
-		v.dirty = dirty_everything
-		if len(a.lines) == 0 {
-			// no lines were deleted, no things to adjust
-			return
-		}
-
-		c := v.loc.cursor
-		first, last := a.deleted_lines()
-		if first <= c.line_num && c.line_num <= last {
-			// deleted the cursor line, see how much it affects it
-			n := 0
-			if last == c.line_num {
-				n = c.boffset - a.last_line_affection_len()
-				if n < 0 {
-					n = 0
-				}
-			}
-			c = a.cursor
-			c.boffset += n
-			v.move_cursor_to(c)
-		} else {
-			// phew.. no worries
-			v.loc.cursor.line_num -= len(a.lines)
-			return
-		}
-	}
-
-	// the last case is deletion on the cursor line, see what was deleted
-	v.dirty = dirty_everything
 	c := v.loc.cursor
-	if a.cursor.boffset >= c.boffset {
-		// deleted something after cursor, don't care
-		return
-	}
-
-	n := c.boffset - (a.cursor.boffset + a.first_line_affection_len())
-	if n < 0 {
-		n = 0
-	}
-	c.boffset = a.cursor.boffset + n
+	c.on_delete_adjust(a)
 	v.move_cursor_to(c)
+	v.loc.last_cursor_voffset = v.loc.cursor_voffset
+	v.dirty = dirty_everything
 }
 
 func (v *view) on_vcommand(cmd vcommand, arg rune) {
