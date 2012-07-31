@@ -235,7 +235,7 @@ func (g *godit) on_sys_key(ev *termbox.Event) {
 func (g *godit) on_key(ev *termbox.Event) {
 	switch ev.Key {
 	case termbox.KeyCtrlX:
-		g.set_overlay_mode(extended_mode{godit: g})
+		g.set_overlay_mode(init_extended_mode(g))
 	default:
 		g.active.leaf.on_key(ev)
 	}
@@ -274,9 +274,6 @@ func (g *godit) set_overlay_mode(m overlay_mode) {
 	if g.overlay != nil {
 		g.overlay.exit()
 	}
-	if m != nil {
-		m.init()
-	}
 	g.overlay = m
 }
 
@@ -286,7 +283,6 @@ func (g *godit) set_overlay_mode(m overlay_mode) {
 
 type overlay_mode interface {
 	needs_cursor() bool
-	init()
 	exit()
 	draw()
 	on_resize(ev *termbox.Event)
@@ -296,7 +292,6 @@ type overlay_mode interface {
 type default_overlay_mode struct{}
 
 func (default_overlay_mode) needs_cursor() bool          { return false }
-func (default_overlay_mode) init()                       {}
 func (default_overlay_mode) exit()                       {}
 func (default_overlay_mode) draw()                       {}
 func (default_overlay_mode) on_resize(ev *termbox.Event) {}
@@ -311,8 +306,10 @@ type extended_mode struct {
 	default_overlay_mode
 }
 
-func (e extended_mode) init() {
+func init_extended_mode(godit *godit) extended_mode {
+	e := extended_mode{godit: godit}
 	e.godit.set_status("C-x")
+	return e
 }
 
 func (e extended_mode) on_key(ev *termbox.Event) {
