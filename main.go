@@ -23,18 +23,20 @@ type view_tree struct {
 	// 1) 'left', 'right' and 'split'
 	// 2) 'top', 'bottom' and 'split'
 	// 3) 'leaf'
-	left   *view_tree
-	top    *view_tree
-	right  *view_tree
-	bottom *view_tree
-	leaf   *view
-	split  float32
-	pos    tulib.Rect // updated with 'resize' call
+	parent     *view_tree
+	left       *view_tree
+	top        *view_tree
+	right      *view_tree
+	bottom     *view_tree
+	leaf       *view
+	split      float32
+	tulib.Rect // updated with 'resize' call
 }
 
-func new_view_tree_leaf(v *view) *view_tree {
+func new_view_tree_leaf(parent *view_tree, v *view) *view_tree {
 	return &view_tree{
-		leaf: v,
+		parent: parent,
+		leaf:   v,
 	}
 }
 
@@ -42,8 +44,9 @@ func (v *view_tree) split_vertically() {
 	top := v.leaf
 	bottom := new_view(top.sr, top.buf)
 	*v = view_tree{
-		top:    new_view_tree_leaf(top),
-		bottom: new_view_tree_leaf(bottom),
+		parent: v.parent,
+		top:    new_view_tree_leaf(v, top),
+		bottom: new_view_tree_leaf(v, bottom),
 		split:  0.5,
 	}
 }
@@ -52,9 +55,10 @@ func (v *view_tree) split_horizontally() {
 	left := v.leaf
 	right := new_view(left.sr, left.buf)
 	*v = view_tree{
-		left:  new_view_tree_leaf(left),
-		right: new_view_tree_leaf(right),
-		split: 0.5,
+		parent: v.parent,
+		left:   new_view_tree_leaf(v, left),
+		right:  new_view_tree_leaf(v, right),
+		split:  0.5,
 	}
 }
 
@@ -74,7 +78,7 @@ func (v *view_tree) draw() {
 }
 
 func (v *view_tree) resize(pos tulib.Rect) {
-	v.pos = pos
+	v.Rect = pos
 	if v.leaf != nil {
 		v.leaf.resize(pos.Width, pos.Height)
 		return
@@ -98,6 +102,75 @@ func (v *view_tree) resize(pos tulib.Rect) {
 		v.top.resize(tulib.Rect{pos.X, pos.Y, pos.Width, th})
 		v.bottom.resize(tulib.Rect{pos.X, pos.Y + th, pos.Width, bh})
 	}
+}
+
+func (v *view_tree) traverse(cb func(*view_tree)) {
+	if v.leaf != nil {
+		cb(v)
+		return
+	}
+
+	if v.left != nil {
+		v.left.traverse(cb)
+		v.right.traverse(cb)
+	} else if v.top != nil {
+		v.top.traverse(cb)
+		v.bottom.traverse(cb)
+	}
+}
+
+func (v *view_tree) nearest_vsplit() *view_tree {
+	v = v.parent
+	for v != nil {
+		if v.top != nil {
+			return v
+		}
+		v = v.parent
+	}
+	return nil
+}
+
+func (v *view_tree) nearest_hsplit() *view_tree {
+	v = v.parent
+	for v != nil {
+		if v.left != nil {
+			return v
+		}
+		v = v.parent
+	}
+	return nil
+}
+
+func (v *view_tree) one_step() float32 {
+	if v.top != nil {
+		return 1.0 / float32(v.Height)
+	} else if v.left != nil {
+		return 1.0 / float32(v.Width-1)
+	}
+	return 0.0
+}
+
+func (v *view_tree) normalize_split() {
+	var off int
+	if v.top != nil {
+		off = int(float32(v.Height) * v.split)
+	} else {
+		off = int(float32(v.Width-1) * v.split)
+	}
+	v.split = float32(off) * v.one_step()
+}
+
+func (v *view_tree) step_resize(n int) {
+	one := v.one_step()
+	v.normalize_split()
+	v.split += one*float32(n) + (one * 0.5)
+	if v.split > 1.0 {
+		v.split = 1.0
+	}
+	if v.split < 0.0 {
+		v.split = 0.0
+	}
+	v.resize(v.Rect)
 }
 
 //----------------------------------------------------------------------------
@@ -137,7 +210,7 @@ func new_godit(filenames []string) *godit {
 	if g.buffers[0].path == "" {
 		g.set_status("(New file)")
 	}
-	g.views = new_view_tree_leaf(new_view(g, g.buffers[0]))
+	g.views = new_view_tree_leaf(nil, new_view(g, g.buffers[0]))
 	g.active = g.views
 	return g
 }
@@ -148,12 +221,18 @@ func (g *godit) set_status(format string, args ...interface{}) {
 }
 
 func (g *godit) split_horizontally() {
+	if g.active.Width == 0 {
+		return
+	}
 	g.active.split_horizontally()
 	g.active = g.active.left
 	g.resize()
 }
 
 func (g *godit) split_vertically() {
+	if g.active.Height == 0 {
+		return
+	}
 	g.active.split_vertically()
 	g.active = g.active.top
 	g.resize()
@@ -195,14 +274,14 @@ func (g *godit) draw_status() {
 
 func (g *godit) composite_recursively(v *view_tree) {
 	if v.leaf != nil {
-		g.uibuf.Blit(v.pos, 0, 0, &v.leaf.uibuf)
+		g.uibuf.Blit(v.Rect, 0, 0, &v.leaf.uibuf)
 		return
 	}
 
 	if v.left != nil {
 		g.composite_recursively(v.left)
 		g.composite_recursively(v.right)
-		splitter := v.right.pos
+		splitter := v.right.Rect
 		splitter.X -= 1
 		splitter.Width = 1
 		g.uibuf.Fill(splitter, termbox.Cell{
@@ -218,7 +297,7 @@ func (g *godit) composite_recursively(v *view_tree) {
 
 func (g *godit) cursor_position() (int, int) {
 	x, y := g.active.leaf.cursor_position()
-	return g.active.pos.X + x, g.active.pos.Y + y
+	return g.active.X + x, g.active.Y + y
 }
 
 func (g *godit) on_sys_key(ev *termbox.Event) {
@@ -302,8 +381,8 @@ func (default_overlay_mode) on_key(ev *termbox.Event)    {}
 //----------------------------------------------------------------------------
 
 type extended_mode struct {
-	godit *godit
 	default_overlay_mode
+	godit *godit
 }
 
 func init_extended_mode(godit *godit) extended_mode {
@@ -321,8 +400,14 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 		g.quitflag = true
 	case termbox.KeyCtrlX:
 		v.on_vcommand(vcommand_swap_cursor_and_mark, 0)
+	case termbox.KeyCtrlW:
+		g.set_overlay_mode(init_view_op_mode(g))
+		return
 	default:
 		switch ev.Ch {
+		case 'w':
+			g.set_overlay_mode(init_view_op_mode(g))
+			return
 		case '2':
 			g.split_vertically()
 		case '3':
@@ -344,6 +429,181 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 	return
 undefined:
 	g.set_status("C-x %s is undefined", tulib.KeyToString(ev.Key, ev.Ch, ev.Mod))
+	g.set_overlay_mode(nil)
+}
+
+//----------------------------------------------------------------------------
+// view op mode
+//----------------------------------------------------------------------------
+
+type view_op_mode struct {
+	default_overlay_mode
+	godit *godit
+}
+
+const view_names = `1234567890abcdefgjkmnopqrstuwxyzABCDEFGJKLMNOPQRSTUWXYZ`
+
+var view_op_mode_name = []byte("View Operations mode")
+
+func init_view_op_mode(godit *godit) view_op_mode {
+	termbox.HideCursor()
+	v := view_op_mode{godit: godit}
+	return v
+}
+
+func (v view_op_mode) draw() {
+	g := v.godit
+	r := g.uibuf.Rect
+	r.Y = r.Height - 1
+	r.Height = 1
+	g.uibuf.Fill(r, termbox.Cell{
+		Fg: termbox.ColorDefault,
+		Bg: termbox.ColorDefault,
+		Ch: ' ',
+	})
+	lp := tulib.DefaultLabelParams
+	lp.Fg = termbox.ColorYellow
+	g.uibuf.DrawLabel(r, &lp, view_op_mode_name)
+
+	// draw views names
+	name := 0
+	g.views.traverse(func(leaf *view_tree) {
+		if name >= len(view_names) {
+			return
+		}
+		bg := termbox.ColorRed
+		if leaf == g.active {
+			bg = termbox.ColorBlue
+		}
+		r := leaf.Rect
+		r.Width = 3
+		r.Height = 1
+		x := r.X + 1
+		y := r.Y
+		g.uibuf.Fill(r, termbox.Cell{
+			Fg: termbox.ColorDefault,
+			Bg: bg,
+			Ch: ' ',
+		})
+		g.uibuf.Set(x, y, termbox.Cell{
+			Fg: termbox.ColorWhite | termbox.AttrBold,
+			Bg: bg,
+			Ch: rune(view_names[name]),
+		})
+		name++
+	})
+
+	// draw splitters
+	r = g.active.Rect
+	var x, y int
+
+	// horizontal ----------------------
+	hr := r
+	hr.X += (r.Width - 1) / 2
+	hr.Width = 1
+	hr.Height = 3
+	g.uibuf.Fill(hr, termbox.Cell{
+		Fg: termbox.ColorCyan,
+		Bg: termbox.ColorBlue,
+		Ch: '│',
+	})
+
+	x = hr.X
+	y = hr.Y + 1
+	g.uibuf.Set(x, y, termbox.Cell{
+		Fg: termbox.ColorCyan | termbox.AttrBold,
+		Bg: termbox.ColorBlue,
+		Ch: 'H',
+	})
+
+	// vertical ----------------------
+	vr := r
+	vr.Y += (r.Height - 1) / 2
+	vr.Height = 1
+	vr.Width = 5
+	g.uibuf.Fill(vr, termbox.Cell{
+		Fg: termbox.ColorCyan,
+		Bg: termbox.ColorBlue,
+		Ch: '─',
+	})
+
+	x = vr.X + 2
+	y = vr.Y
+	g.uibuf.Set(x, y, termbox.Cell{
+		Fg: termbox.ColorCyan | termbox.AttrBold,
+		Bg: termbox.ColorBlue,
+		Ch: 'V',
+	})
+}
+
+func (v view_op_mode) select_name(ch rune) *view_tree {
+	g := v.godit
+	sel := (*view_tree)(nil)
+	name := 0
+	g.views.traverse(func(leaf *view_tree) {
+		if name >= len(view_names) {
+			return
+		}
+		if rune(view_names[name]) == ch {
+			sel = leaf
+		}
+		name++
+	})
+
+	return sel
+}
+
+func (v view_op_mode) needs_cursor() bool {
+	return true
+}
+
+func (v view_op_mode) on_key(ev *termbox.Event) {
+	g := v.godit
+	if ev.Ch != 0 {
+		leaf := v.select_name(ev.Ch)
+		if leaf != nil {
+			g.active = leaf
+			g.active.leaf.activate()
+			return
+		}
+
+		switch ev.Ch {
+		case 'h', 'H':
+			g.split_horizontally()
+			return
+		case 'v', 'V':
+			g.split_vertically()
+			return
+		}
+	}
+
+	switch ev.Key {
+	case termbox.KeyCtrlN, termbox.KeyArrowDown:
+		node := g.active.nearest_vsplit()
+		if node != nil {
+			node.step_resize(1)
+		}
+		return
+	case termbox.KeyCtrlP, termbox.KeyArrowUp:
+		node := g.active.nearest_vsplit()
+		if node != nil {
+			node.step_resize(-1)
+		}
+		return
+	case termbox.KeyCtrlF, termbox.KeyArrowRight:
+		node := g.active.nearest_hsplit()
+		if node != nil {
+			node.step_resize(1)
+		}
+		return
+	case termbox.KeyCtrlB, termbox.KeyArrowLeft:
+		node := g.active.nearest_hsplit()
+		if node != nil {
+			node.step_resize(-1)
+		}
+		return
+	}
+
 	g.set_overlay_mode(nil)
 }
 

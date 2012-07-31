@@ -208,6 +208,10 @@ func (v *view) draw_contents() {
 		Bg: termbox.ColorDefault,
 	})
 
+	if v.uibuf.Width == 0 || v.uibuf.Height == 0 {
+		return
+	}
+
 	// draw lines
 	line := v.top_line
 	coff := 0
