@@ -40,7 +40,7 @@ func new_view_tree_leaf(v *view) *view_tree {
 
 func (v *view_tree) split_vertically() {
 	top := v.leaf
-	bottom := new_view(top.parent, top.buf)
+	bottom := new_view(top.sr, top.buf)
 	*v = view_tree{
 		top:    new_view_tree_leaf(top),
 		bottom: new_view_tree_leaf(bottom),
@@ -50,7 +50,7 @@ func (v *view_tree) split_vertically() {
 
 func (v *view_tree) split_horizontally() {
 	left := v.leaf
-	right := new_view(left.parent, left.buf)
+	right := new_view(left.sr, left.buf)
 	*v = view_tree{
 		left:  new_view_tree_leaf(left),
 		right: new_view_tree_leaf(right),
@@ -333,8 +333,10 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 		case 'o':
 			if g.views.left == g.active {
 				g.active = g.views.right
+				g.active.leaf.activate()
 			} else if g.views.right == g.active {
 				g.active = g.views.left
+				g.active.leaf.activate()
 			}
 		default:
 			goto undefined

@@ -58,6 +58,14 @@ type view_location struct {
 }
 
 //----------------------------------------------------------------------------
+// status reporter
+//----------------------------------------------------------------------------
+
+type status_reporter interface {
+	set_status(format string, args ...interface{})
+}
+
+//----------------------------------------------------------------------------
 // view
 //
 // Think of it as a window. It draws contents from a portion of a buffer into
@@ -66,20 +74,25 @@ type view_location struct {
 
 type view struct {
 	view_location
-	parent  *godit       // view is owned by a godit instance
-	status  bytes.Buffer // temporary buffer for status bar text
-	buf     *buffer      // currently displayed buffer
-	uibuf   tulib.Buffer
-	dirty   dirty_flag
-	oneline bool
+	sr                  status_reporter
+	status              bytes.Buffer // temporary buffer for status bar text
+	buf                 *buffer      // currently displayed buffer
+	uibuf               tulib.Buffer
+	dirty               dirty_flag
+	oneline             bool
+	last_vcommand_class vcommand_class
 }
 
-func new_view(parent *godit, buf *buffer) *view {
+func new_view(sr status_reporter, buf *buffer) *view {
 	v := new(view)
-	v.parent = parent
+	v.sr = sr
 	v.uibuf = tulib.NewBuffer(1, 1)
 	v.attach(buf)
 	return v
+}
+
+func (v *view) activate() {
+	v.last_vcommand_class = vcommand_class_none
 }
 
 func (v *view) attach(b *buffer) {
@@ -444,7 +457,7 @@ func (v *view) move_cursor_to(c cursor_location) {
 func (v *view) move_cursor_forward() {
 	c := v.cursor
 	if c.last_line() && c.eol() {
-		v.parent.set_status("End of buffer")
+		v.sr.set_status("End of buffer")
 		return
 	}
 
@@ -456,7 +469,7 @@ func (v *view) move_cursor_forward() {
 func (v *view) move_cursor_backward() {
 	c := v.cursor
 	if c.first_line() && c.bol() {
-		v.parent.set_status("Beginning of buffer")
+		v.sr.set_status("Beginning of buffer")
 		return
 	}
 
@@ -471,7 +484,7 @@ func (v *view) move_cursor_next_line() {
 		c = cursor_location{c.line.next, c.line_num + 1, -1}
 		v.move_cursor_to(c)
 	} else {
-		v.parent.set_status("End of buffer")
+		v.sr.set_status("End of buffer")
 	}
 }
 
@@ -482,7 +495,7 @@ func (v *view) move_cursor_prev_line() {
 		c = cursor_location{c.line.prev, c.line_num - 1, -1}
 		v.move_cursor_to(c)
 	} else {
-		v.parent.set_status("Beginning of buffer")
+		v.sr.set_status("Beginning of buffer")
 	}
 }
 
@@ -518,7 +531,7 @@ func (v *view) move_cursor_word_forward() {
 	ok := c.move_one_word_forward()
 	v.move_cursor_to(c)
 	if !ok {
-		v.parent.set_status("End of buffer")
+		v.sr.set_status("End of buffer")
 	}
 }
 
@@ -527,7 +540,7 @@ func (v *view) move_cursor_word_backward() {
 	ok := c.move_one_word_backward()
 	v.move_cursor_to(c)
 	if !ok {
-		v.parent.set_status("Beginning of buffer")
+		v.sr.set_status("Beginning of buffer")
 	}
 }
 
@@ -695,7 +708,7 @@ func (v *view) delete_rune_backward() {
 	if c.bol() {
 		if c.first_line() {
 			// beginning of the file
-			v.parent.set_status("Beginning of buffer")
+			v.sr.set_status("Beginning of buffer")
 			return
 		}
 		c.line = c.line.prev
@@ -722,7 +735,7 @@ func (v *view) delete_rune() {
 	if c.eol() {
 		if c.last_line() {
 			// end of the file
-			v.parent.set_status("End of buffer")
+			v.sr.set_status("End of buffer")
 			return
 		}
 		v.action_delete(c, 1)
@@ -760,7 +773,7 @@ func (v *view) kill_word() {
 
 func (v *view) kill_region() {
 	if !v.buf.is_mark_set() {
-		v.parent.set_status("The mark is not set now, so there is no region")
+		v.sr.set_status("The mark is not set now, so there is no region")
 		return
 	}
 
@@ -781,7 +794,7 @@ func (v *view) kill_region() {
 
 func (v *view) set_mark() {
 	v.buf.mark = v.cursor
-	v.parent.set_status("Mark set")
+	v.sr.set_status("Mark set")
 }
 
 func (v *view) swap_cursor_and_mark() {
@@ -875,9 +888,9 @@ func (v *view) on_delete(a *action) {
 }
 
 func (v *view) on_vcommand(cmd vcommand, arg rune) {
-	cmdclass := cmd.class()
-	if cmdclass != v.parent.lastcmdclass {
-		v.parent.lastcmdclass = cmdclass
+	class := cmd.class()
+	if class != v.last_vcommand_class {
+		v.last_vcommand_class = class
 		v.finalize_action_group()
 	}
 
