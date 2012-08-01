@@ -314,6 +314,7 @@ func (g *godit) kill_all_views_but_active() {
 		}
 	})
 	g.views = g.active
+	g.views.parent = nil
 	g.resize()
 }
 
