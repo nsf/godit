@@ -181,6 +181,39 @@ func (v *view_tree) step_resize(n int) {
 	v.resize(v.Rect)
 }
 
+func (v *view_tree) sibling() *view_tree {
+	var candidate *view_tree
+	p := v.parent
+	if p == nil {
+		return nil
+	}
+	switch {
+	case v == p.left:
+		candidate = p.right
+	case v == p.right:
+		candidate = p.left
+	case v == p.top:
+		candidate = p.bottom
+	case v == p.bottom:
+		candidate = p.top
+	}
+	if candidate.leaf != nil {
+		return candidate
+	}
+	return nil
+}
+
+func (v *view_tree) first_leaf_node() *view_tree {
+	if v.left != nil {
+		return v.left.first_leaf_node()
+	} else if v.top != nil {
+		return v.top.first_leaf_node()
+	} else if v.leaf != nil {
+		return v
+	}
+	panic("unreachable")
+}
+
 //----------------------------------------------------------------------------
 // godit
 //
@@ -243,6 +276,34 @@ func (g *godit) split_vertically() {
 	}
 	g.active.split_vertically()
 	g.active = g.active.top
+	g.resize()
+}
+
+func (g *godit) kill_active_view() {
+	p := g.active.parent
+	if p == nil {
+		return
+	}
+
+	pp := p.parent
+	g.active.leaf.detach()
+	*p = *g.active.sibling()
+	p.parent = pp
+	g.active = p.first_leaf_node()
+	g.active.leaf.activate()
+	g.resize()
+}
+
+func (g *godit) kill_all_views_but_active() {
+	g.views.traverse(func (v *view_tree) {
+		if v == g.active {
+			return
+		}
+		if v.leaf != nil {
+			v.leaf.detach()
+		}
+	})
+	g.views = g.active
 	g.resize()
 }
 
@@ -416,16 +477,18 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 		case 'w':
 			g.set_overlay_mode(init_view_op_mode(g))
 			return
+		case '0':
+			g.kill_active_view()
+		case '1':
+			g.kill_all_views_but_active()
 		case '2':
 			g.split_vertically()
 		case '3':
 			g.split_horizontally()
 		case 'o':
-			if g.views.left == g.active {
-				g.active = g.views.right
-				g.active.leaf.activate()
-			} else if g.views.right == g.active {
-				g.active = g.views.left
+			sibling := g.active.sibling()
+			if sibling != nil {
+				g.active = sibling
 				g.active.leaf.activate()
 			}
 		default:
@@ -449,9 +512,9 @@ type view_op_mode struct {
 	godit *godit
 }
 
-const view_names = `1234567890abcdefgjkmnopqrstuwxyzABCDEFGJKLMNOPQRSTUWXYZ`
+const view_names = `1234567890abcdefgijlmnpqrstuwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ`
 
-var view_op_mode_name = []byte("View Operations mode")
+var view_op_mode_name = []byte("view operations mode")
 
 func init_view_op_mode(godit *godit) view_op_mode {
 	termbox.HideCursor()
@@ -479,9 +542,9 @@ func (v view_op_mode) draw() {
 		if name >= len(view_names) {
 			return
 		}
-		bg := termbox.ColorRed
+		bg := termbox.ColorBlue
 		if leaf == g.active {
-			bg = termbox.ColorBlue
+			bg = termbox.ColorRed
 		}
 		r := leaf.Rect
 		r.Width = 3
@@ -511,17 +574,17 @@ func (v view_op_mode) draw() {
 	hr.Width = 1
 	hr.Height = 3
 	g.uibuf.Fill(hr, termbox.Cell{
-		Fg: termbox.ColorCyan,
-		Bg: termbox.ColorBlue,
+		Fg: termbox.ColorWhite,
+		Bg: termbox.ColorRed,
 		Ch: '│',
 	})
 
 	x = hr.X
 	y = hr.Y + 1
 	g.uibuf.Set(x, y, termbox.Cell{
-		Fg: termbox.ColorCyan | termbox.AttrBold,
-		Bg: termbox.ColorBlue,
-		Ch: 'H',
+		Fg: termbox.ColorWhite | termbox.AttrBold,
+		Bg: termbox.ColorRed,
+		Ch: 'h',
 	})
 
 	// vertical ----------------------
@@ -530,17 +593,17 @@ func (v view_op_mode) draw() {
 	vr.Height = 1
 	vr.Width = 5
 	g.uibuf.Fill(vr, termbox.Cell{
-		Fg: termbox.ColorCyan,
-		Bg: termbox.ColorBlue,
+		Fg: termbox.ColorWhite,
+		Bg: termbox.ColorRed,
 		Ch: '─',
 	})
 
 	x = vr.X + 2
 	y = vr.Y
 	g.uibuf.Set(x, y, termbox.Cell{
-		Fg: termbox.ColorCyan | termbox.AttrBold,
-		Bg: termbox.ColorBlue,
-		Ch: 'V',
+		Fg: termbox.ColorWhite | termbox.AttrBold,
+		Bg: termbox.ColorRed,
+		Ch: 'v',
 	})
 }
 
@@ -576,11 +639,22 @@ func (v view_op_mode) on_key(ev *termbox.Event) {
 		}
 
 		switch ev.Ch {
-		case 'h', 'H':
+		case 'h':
 			g.split_horizontally()
 			return
-		case 'v', 'V':
+		case 'v':
 			g.split_vertically()
+			return
+		case 'k':
+			g.kill_active_view()
+			return
+		case 'o':
+			// TODO: this is copy & paste, move it to func
+			sibling := g.active.sibling()
+			if sibling != nil {
+				g.active = sibling
+				g.active.leaf.activate()
+			}
 			return
 		}
 	}
