@@ -181,26 +181,32 @@ func (v *view_tree) step_resize(n int) {
 	v.resize(v.Rect)
 }
 
+func (v *view_tree) reparent() {
+	if v.left != nil {
+		v.left.parent = v
+		v.right.parent = v
+	} else if v.top != nil {
+		v.top.parent = v
+		v.bottom.parent = v
+	}
+}
+
 func (v *view_tree) sibling() *view_tree {
-	var candidate *view_tree
 	p := v.parent
 	if p == nil {
 		return nil
 	}
 	switch {
 	case v == p.left:
-		candidate = p.right
+		return p.right
 	case v == p.right:
-		candidate = p.left
+		return p.left
 	case v == p.top:
-		candidate = p.bottom
+		return p.bottom
 	case v == p.bottom:
-		candidate = p.top
+		return p.top
 	}
-	if candidate.leaf != nil {
-		return candidate
-	}
-	return nil
+	panic("unreachable")
 }
 
 func (v *view_tree) first_leaf_node() *view_tree {
@@ -286,9 +292,13 @@ func (g *godit) kill_active_view() {
 	}
 
 	pp := p.parent
+	sib := g.active.sibling()
 	g.active.leaf.detach()
-	*p = *g.active.sibling()
+
+	*p = *sib
 	p.parent = pp
+	p.reparent()
+
 	g.active = p.first_leaf_node()
 	g.active.leaf.activate()
 	g.resize()
@@ -487,7 +497,7 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 			g.split_horizontally()
 		case 'o':
 			sibling := g.active.sibling()
-			if sibling != nil {
+			if sibling != nil && sibling.leaf != nil {
 				g.active = sibling
 				g.active.leaf.activate()
 			}
