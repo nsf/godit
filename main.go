@@ -630,7 +630,10 @@ func main() {
 	termbox.Flush()
 
 	for {
-		ev := termbox.PollEvent()
+		ev, err := termbox.PollEvent()
+		if err != nil {
+			panic(err)
+		}
 		ok := godit.handle_event(&ev)
 		if !ok {
 			return
