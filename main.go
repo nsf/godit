@@ -87,7 +87,10 @@ func (v *view_tree) resize(pos tulib.Rect) {
 	if v.left != nil {
 		// horizontal split, use 'w'
 		w := pos.Width
-		w-- // reserve one line for splitter
+		if w > 0 {
+			// reserve one line for splitter, if we have one line
+			w--
+		}
 		lw := int(float32(w) * v.split)
 		rw := w - lw
 		v.left.resize(tulib.Rect{pos.X, pos.Y, lw, pos.Height})
@@ -161,6 +164,11 @@ func (v *view_tree) normalize_split() {
 }
 
 func (v *view_tree) step_resize(n int) {
+	if v.Width <= 1 || v.Height <= 0 {
+		// avoid division by zero, result is really bad
+		return
+	}
+
 	one := v.one_step()
 	v.normalize_split()
 	v.split += one*float32(n) + (one * 0.5)
