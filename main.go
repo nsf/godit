@@ -228,16 +228,16 @@ func (v *view_tree) first_leaf_node() *view_tree {
 //----------------------------------------------------------------------------
 
 type godit struct {
-	uibuf          tulib.Buffer
-	active         *view_tree // this one is always a leaf node
-	views          *view_tree // a root node
-	buffers        []*buffer
-	lastcmdclass   vcommand_class
-	statusbuf      bytes.Buffer
-	quitflag       bool
-	overlay        overlay_mode
-	termbox_event  chan termbox.Event
-	custom_event   chan func()
+	uibuf         tulib.Buffer
+	active        *view_tree // this one is always a leaf node
+	views         *view_tree // a root node
+	buffers       []*buffer
+	lastcmdclass  vcommand_class
+	statusbuf     bytes.Buffer
+	quitflag      bool
+	overlay       overlay_mode
+	termbox_event chan termbox.Event
+	custom_event  chan func()
 }
 
 func new_godit(filenames []string) *godit {

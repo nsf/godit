@@ -802,9 +802,11 @@ func (v *view) set_mark() {
 }
 
 func (v *view) swap_cursor_and_mark() {
-	m := v.buf.mark
-	v.buf.mark = v.cursor
-	v.move_cursor_to(m)
+	if v.buf.is_mark_set() {
+		m := v.buf.mark
+		v.buf.mark = v.cursor
+		v.move_cursor_to(m)
+	}
 }
 
 func (v *view) on_insert_adjust_top_line(a *action) {
