@@ -228,14 +228,16 @@ func (v *view_tree) first_leaf_node() *view_tree {
 //----------------------------------------------------------------------------
 
 type godit struct {
-	uibuf        tulib.Buffer
-	active       *view_tree // this one is always a leaf node
-	views        *view_tree // a root node
-	buffers      []*buffer
-	lastcmdclass vcommand_class
-	statusbuf    bytes.Buffer
-	quitflag     bool
-	overlay      overlay_mode
+	uibuf          tulib.Buffer
+	active         *view_tree // this one is always a leaf node
+	views          *view_tree // a root node
+	buffers        []*buffer
+	lastcmdclass   vcommand_class
+	statusbuf      bytes.Buffer
+	quitflag       bool
+	overlay        overlay_mode
+	termbox_event  chan termbox.Event
+	custom_event   chan func()
 }
 
 func new_godit(filenames []string) *godit {
@@ -305,7 +307,7 @@ func (g *godit) kill_active_view() {
 }
 
 func (g *godit) kill_all_views_but_active() {
-	g.views.traverse(func (v *view_tree) {
+	g.views.traverse(func(v *view_tree) {
 		if v == g.active {
 			return
 		}
@@ -400,6 +402,44 @@ func (g *godit) on_key(ev *termbox.Event) {
 	}
 }
 
+func (g *godit) main_loop() {
+	g.termbox_event = make(chan termbox.Event, 20)
+	go func() {
+		for {
+			g.termbox_event <- termbox.PollEvent()
+		}
+	}()
+	for {
+		select {
+		case ev := <-g.termbox_event:
+			ok := g.handle_event(&ev)
+			if !ok {
+				return
+			}
+			g.consume_more_events()
+			g.draw()
+			termbox.Flush()
+		case cev := <-g.custom_event:
+			cev()
+		}
+	}
+}
+
+func (g *godit) consume_more_events() bool {
+	for {
+		select {
+		case ev := <-g.termbox_event:
+			ok := g.handle_event(&ev)
+			if !ok {
+				return false
+			}
+		default:
+			return true
+		}
+	}
+	panic("unreachable")
+}
+
 func (g *godit) handle_event(ev *termbox.Event) bool {
 	switch ev.Type {
 	case termbox.EventKey:
@@ -414,17 +454,14 @@ func (g *godit) handle_event(ev *termbox.Event) bool {
 		if g.quitflag {
 			return false
 		}
-
-		g.draw()
-		termbox.Flush()
 	case termbox.EventResize:
 		termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
 		g.resize()
 		if g.overlay != nil {
 			g.overlay.on_resize(ev)
 		}
-		g.draw()
-		termbox.Flush()
+	case termbox.EventError:
+		panic(ev.Err)
 	}
 	return true
 }
@@ -713,15 +750,5 @@ func main() {
 	godit.draw()
 	termbox.SetCursor(godit.cursor_position())
 	termbox.Flush()
-
-	for {
-		ev, err := termbox.PollEvent()
-		if err != nil {
-			panic(err)
-		}
-		ok := godit.handle_event(&ev)
-		if !ok {
-			return
-		}
-	}
+	godit.main_loop()
 }
