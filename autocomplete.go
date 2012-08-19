@@ -222,6 +222,7 @@ func (ac *autocompl) adjust_view(height int) {
 func (ac *autocompl) validate_cursor() {
 	if ac.cursor >= len(ac.actual_proposals()) {
 		ac.cursor = 0
+		ac.view = 0
 	}
 }
 
