@@ -62,6 +62,47 @@ func (a cursor_location) distance(b cursor_location) int {
 	return n * s
 }
 
+// Find a visual and a character offset for a given cursor
+func (c *cursor_location) voffset_coffset() (vo, co int) {
+	data := c.line.data[:c.boffset]
+	for len(data) > 0 {
+		r, rlen := utf8.DecodeRune(data)
+		data = data[rlen:]
+		co += 1
+		if r == '\t' {
+			vo += tabstop_length - vo%tabstop_length
+		} else {
+			vo += 1
+		}
+	}
+	return
+}
+
+// Find a visual offset for a given cursor
+func (c *cursor_location) voffset() (vo int) {
+	data := c.line.data[:c.boffset]
+	for len(data) > 0 {
+		r, rlen := utf8.DecodeRune(data)
+		data = data[rlen:]
+		if r == '\t' {
+			vo += tabstop_length - vo%tabstop_length
+		} else {
+			vo += 1
+		}
+	}
+	return
+}
+
+func (c *cursor_location) coffset() (co int) {
+	data := c.line.data[:c.boffset]
+	for len(data) > 0 {
+		_, rlen := utf8.DecodeRune(data)
+		data = data[rlen:]
+		co += 1
+	}
+	return
+}
+
 func (c *cursor_location) extract_bytes(n int) []byte {
 	var buf bytes.Buffer
 	offset := c.boffset

@@ -19,37 +19,6 @@ type line struct {
 	prev *line
 }
 
-// Find a visual offset for a given byte offset
-func (l *line) voffset(boffset int) (vo int) {
-	data := l.data[:boffset]
-	for len(data) > 0 {
-		r, rlen := utf8.DecodeRune(data)
-		data = data[rlen:]
-		if r == '\t' {
-			vo += tabstop_length - vo%tabstop_length
-		} else {
-			vo += 1
-		}
-	}
-	return
-}
-
-// Find a visual and a character offset for a given byte offset
-func (l *line) voffset_coffset(boffset int) (vo, co int) {
-	data := l.data[:boffset]
-	for len(data) > 0 {
-		r, rlen := utf8.DecodeRune(data)
-		data = data[rlen:]
-		co += 1
-		if r == '\t' {
-			vo += tabstop_length - vo%tabstop_length
-		} else {
-			vo += 1
-		}
-	}
-	return
-}
-
 // Find a set of closest offsets for a given visual offset
 func (l *line) find_closest_offsets(voffset int) (bo, co, vo int) {
 	data := l.data
@@ -85,6 +54,7 @@ type buffer struct {
 	last_line  *line
 	loc        view_location
 	lines_n    int
+	bytes_n    int
 	history    *action_group
 	mark       cursor_location
 
@@ -159,6 +129,8 @@ func new_buffer_from_reader(r io.Reader) (*buffer, error) {
 			// last line was read
 			break
 		} else {
+			b.bytes_n += len(l.data)
+
 			// cut off the '\n' character
 			l.data = l.data[:len(l.data)-1]
 		}
@@ -251,4 +223,59 @@ func (b *buffer) dump_history() {
 		cur = cur.next
 		i++
 	}
+}
+
+func (b *buffer) reader() *buffer_reader {
+	return new_buffer_reader(b)
+}
+
+//----------------------------------------------------------------------------
+// buffer_reader
+//----------------------------------------------------------------------------
+
+type buffer_reader struct {
+	buffer *buffer
+	line   *line
+	offset int
+}
+
+func new_buffer_reader(buffer *buffer) *buffer_reader {
+	br := new(buffer_reader)
+	br.buffer = buffer
+	br.line = buffer.first_line
+	br.offset = 0
+	return br
+}
+
+func (br *buffer_reader) Read(data []byte) (int, error) {
+	nread := 0
+	for len(data) > 0 {
+		if br.line == nil {
+			return nread, io.EOF
+		}
+
+		// how much can we read from current line
+		can_read := len(br.line.data) - br.offset
+		if len(data) <= can_read {
+			// if this is all we need, return
+			n := copy(data, br.line.data[br.offset:])
+			nread += n
+			br.offset += n
+			break
+		}
+
+		// otherwise try to read '\n' and jump to the next line
+		n := copy(data, br.line.data[br.offset:])
+		nread += n
+		data = data[n:]
+		if len(data) > 0 && br.line != br.buffer.last_line {
+			data[0] = '\n'
+			data = data[1:]
+			nread++
+		}
+
+		br.line = br.line.next
+		br.offset = 0
+	}
+	return nread, nil
 }

@@ -237,7 +237,6 @@ type godit struct {
 	quitflag      bool
 	overlay       overlay_mode
 	termbox_event chan termbox.Event
-	custom_event  chan func()
 }
 
 func new_godit(filenames []string) *godit {
@@ -295,6 +294,7 @@ func (g *godit) kill_active_view() {
 
 	pp := p.parent
 	sib := g.active.sibling()
+	g.active.leaf.deactivate()
 	g.active.leaf.detach()
 
 	*p = *sib
@@ -328,6 +328,20 @@ func (g *godit) resize() {
 	g.views.resize(views_area)
 }
 
+func (g *godit) draw_autocompl() {
+	view := g.active.leaf
+	x, y := g.active.X, g.active.Y
+	if view.ac == nil {
+		return
+	}
+
+	proposals := view.ac.actual_proposals()
+	if len(proposals) > 0 {
+		cx, cy := view.cursor_position_for(view.ac.origin)
+		view.ac.draw_onto(&g.uibuf, x+cx, y+cy)
+	}
+}
+
 func (g *godit) draw() {
 	// draw everything
 	g.views.draw()
@@ -339,10 +353,17 @@ func (g *godit) draw() {
 		g.overlay.draw()
 	}
 
+	// draw autocompletion
+	g.draw_autocompl()
+
 	// update cursor position
-	if g.overlay == nil || !g.overlay.needs_cursor() {
-		termbox.SetCursor(g.cursor_position())
+	var cx, cy int
+	if g.overlay == nil || !needs_cursor(g.overlay.cursor_position()) {
+		cx, cy = g.cursor_position()
+	} else {
+		cx, cy = g.overlay.cursor_position()
 	}
+	termbox.SetCursor(cx, cy)
 }
 
 func (g *godit) draw_status() {
@@ -419,8 +440,6 @@ func (g *godit) main_loop() {
 			g.consume_more_events()
 			g.draw()
 			termbox.Flush()
-		case cev := <-g.custom_event:
-			cev()
 		}
 	}
 }
@@ -478,27 +497,27 @@ func (g *godit) set_overlay_mode(m overlay_mode) {
 //----------------------------------------------------------------------------
 
 type overlay_mode interface {
-	needs_cursor() bool
+	cursor_position() (int, int)
 	exit()
 	draw()
 	on_resize(ev *termbox.Event)
 	on_key(ev *termbox.Event)
 }
 
-type default_overlay_mode struct{}
+type stub_overlay_mode struct{}
 
-func (default_overlay_mode) needs_cursor() bool          { return false }
-func (default_overlay_mode) exit()                       {}
-func (default_overlay_mode) draw()                       {}
-func (default_overlay_mode) on_resize(ev *termbox.Event) {}
-func (default_overlay_mode) on_key(ev *termbox.Event)    {}
+func (stub_overlay_mode) cursor_position() (int, int) { return -2, -2 }
+func (stub_overlay_mode) exit()                       {}
+func (stub_overlay_mode) draw()                       {}
+func (stub_overlay_mode) on_resize(ev *termbox.Event) {}
+func (stub_overlay_mode) on_key(ev *termbox.Event)    {}
 
 //----------------------------------------------------------------------------
 // extended mode
 //----------------------------------------------------------------------------
 
 type extended_mode struct {
-	default_overlay_mode
+	stub_overlay_mode
 	godit *godit
 }
 
@@ -520,6 +539,8 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 	case termbox.KeyCtrlW:
 		g.set_overlay_mode(init_view_op_mode(g))
 		return
+	case termbox.KeyCtrlA:
+		v.on_vcommand(vcommand_autocompl_init, 0)
 	default:
 		switch ev.Ch {
 		case 'w':
@@ -536,6 +557,7 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 		case 'o':
 			sibling := g.active.sibling()
 			if sibling != nil && sibling.leaf != nil {
+				g.active.leaf.deactivate()
 				g.active = sibling
 				g.active.leaf.activate()
 			}
@@ -556,7 +578,7 @@ undefined:
 //----------------------------------------------------------------------------
 
 type view_op_mode struct {
-	default_overlay_mode
+	stub_overlay_mode
 	godit *godit
 }
 
@@ -672,8 +694,8 @@ func (v view_op_mode) select_name(ch rune) *view_tree {
 	return sel
 }
 
-func (v view_op_mode) needs_cursor() bool {
-	return true
+func (v view_op_mode) cursor_position() (int, int) {
+	return -1, -1
 }
 
 func (v view_op_mode) on_key(ev *termbox.Event) {
@@ -681,6 +703,7 @@ func (v view_op_mode) on_key(ev *termbox.Event) {
 	if ev.Ch != 0 {
 		leaf := v.select_name(ev.Ch)
 		if leaf != nil {
+			g.active.leaf.deactivate()
 			g.active = leaf
 			g.active.leaf.activate()
 			return
@@ -700,6 +723,7 @@ func (v view_op_mode) on_key(ev *termbox.Event) {
 			// TODO: this is copy & paste, move it to func
 			sibling := g.active.sibling()
 			if sibling != nil {
+				g.active.leaf.deactivate()
 				g.active = sibling
 				g.active.leaf.activate()
 			}

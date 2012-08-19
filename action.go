@@ -34,7 +34,6 @@ func (a *action) revert(v *view) {
 }
 
 func (a *action) insert_line(line, prev *line, v *view) {
-	v.buf.lines_n++
 	bi := prev
 	ai := prev.next
 
@@ -52,7 +51,6 @@ func (a *action) insert_line(line, prev *line, v *view) {
 }
 
 func (a *action) delete_line(line *line, v *view) {
-	v.buf.lines_n--
 	bi := line.prev
 	ai := line.next
 	if ai != nil {
@@ -75,6 +73,9 @@ func (a *action) insert(v *view) {
 	line := a.cursor.line
 	iter_lines(a.data, func(data []byte) {
 		if data[0] == '\n' {
+			v.buf.bytes_n++
+			v.buf.lines_n++
+
 			if offset < len(line.data) {
 				// a case where we insert at the middle of the
 				// line, need to save that chunk for later
@@ -88,6 +89,8 @@ func (a *action) insert(v *view) {
 			nline++
 			offset = 0
 		} else {
+			v.buf.bytes_n += len(data)
+
 			// insert a chunk of data
 			line.data = insert_bytes(line.data, offset, data)
 			offset += len(data)
@@ -104,12 +107,17 @@ func (a *action) delete(v *view) {
 	line := a.cursor.line
 	iter_lines(a.data, func(data []byte) {
 		if data[0] == '\n' {
+			v.buf.bytes_n--
+			v.buf.lines_n--
+
 			// append the contents of the deleted line the current line
 			line.data = append(line.data, a.lines[nline].data...)
 			// delete a line
 			a.delete_line(a.lines[nline], v)
 			nline++
 		} else {
+			v.buf.bytes_n -= len(data)
+
 			// delete a chunk of data
 			copy(line.data[offset:], line.data[offset+len(data):])
 			line.data = line.data[:len(line.data)-len(data)]

@@ -80,6 +80,7 @@ type view struct {
 	uibuf               tulib.Buffer
 	dirty               dirty_flag
 	oneline             bool
+	ac                  *autocompl
 	last_vcommand_class vcommand_class
 }
 
@@ -93,6 +94,11 @@ func new_view(sr status_reporter, buf *buffer) *view {
 
 func (v *view) activate() {
 	v.last_vcommand_class = vcommand_class_none
+}
+
+func (v *view) deactivate() {
+	// on deactivation discard autocompl
+	v.ac = nil
 }
 
 func (v *view) attach(b *buffer) {
@@ -112,6 +118,10 @@ func (v *view) detach() {
 		v.buf.delete_view(v)
 		v.buf = nil
 	}
+}
+
+func (v *view) init_autocompl() {
+	v.ac = new_autocompl(gocode_ac_func, v)
 }
 
 // Resize the 'v.uibuf', adjusting things accordingly.
@@ -429,6 +439,12 @@ func (v *view) cursor_position() (int, int) {
 	return x, y
 }
 
+func (v *view) cursor_position_for(cursor cursor_location) (int, int) {
+	y := cursor.line_num - v.top_line_num
+	x := cursor.voffset() - v.line_voffset
+	return x, y
+}
+
 // Move cursor to the 'boffset' position in the 'line'. Obviously 'line' must be
 // from the attached buffer. If 'boffset' < 0, use 'last_cursor_voffset'. Keep
 // in mind that there is no need to maintain connections between lines (e.g. for
@@ -441,7 +457,7 @@ func (v *view) move_cursor_to(c cursor_location) {
 		v.cursor_coffset = co
 		v.cursor_voffset = vo
 	} else {
-		vo, co := c.line.voffset_coffset(c.boffset)
+		vo, co := c.voffset_coffset()
 		v.cursor.boffset = c.boffset
 		v.cursor_coffset = co
 		v.cursor_voffset = vo
@@ -455,6 +471,14 @@ func (v *view) move_cursor_to(c cursor_location) {
 	v.cursor.line_num = c.line_num
 	v.adjust_line_voffset()
 	v.adjust_top_line()
+
+	if v.ac != nil {
+		// update autocompletion on every cursor move
+		ok := v.ac.update(v.cursor)
+		if !ok {
+			v.ac = nil
+		}
+	}
 }
 
 // Move cursor one character forward.
@@ -945,6 +969,15 @@ func (v *view) on_vcommand(cmd vcommand, arg rune) {
 		v.undo()
 	case vcommand_redo:
 		v.redo()
+	case vcommand_autocompl_init:
+		v.init_autocompl()
+	case vcommand_autocompl_finalize:
+		v.ac.finalize(v)
+		v.ac = nil
+	case vcommand_autocompl_move_cursor_up:
+		v.ac.move_cursor_up()
+	case vcommand_autocompl_move_cursor_down:
+		v.ac.move_cursor_down()
 	}
 }
 
@@ -969,7 +1002,11 @@ func (v *view) on_key(ev *termbox.Event) {
 	case termbox.KeySpace:
 		v.on_vcommand(vcommand_insert_rune, ' ')
 	case termbox.KeyEnter, termbox.KeyCtrlJ:
-		v.on_vcommand(vcommand_insert_rune, '\n')
+		if v.ac != nil {
+			v.on_vcommand(vcommand_autocompl_finalize, 0)
+		} else {
+			v.on_vcommand(vcommand_insert_rune, '\n')
+		}
 	case termbox.KeyBackspace, termbox.KeyBackspace2:
 		v.on_vcommand(vcommand_delete_rune_backward, 0)
 	case termbox.KeyDelete, termbox.KeyCtrlD:
@@ -1004,6 +1041,14 @@ func (v *view) on_key(ev *termbox.Event) {
 			v.on_vcommand(vcommand_move_cursor_word_backward, 0)
 		case 'd':
 			v.on_vcommand(vcommand_kill_word, 0)
+		case 'n':
+			if v.ac != nil {
+				v.on_vcommand(vcommand_autocompl_move_cursor_down, 0)
+			}
+		case 'p':
+			if v.ac != nil {
+				v.on_vcommand(vcommand_autocompl_move_cursor_up, 0)
+			}
 		}
 	} else if ev.Ch != 0 {
 		v.on_vcommand(vcommand_insert_rune, ev.Ch)
@@ -1030,6 +1075,7 @@ const (
 	vcommand_class_insertion
 	vcommand_class_deletion
 	vcommand_class_history
+	vcommand_class_misc
 )
 
 type vcommand int
@@ -1072,6 +1118,14 @@ const (
 	vcommand_undo
 	vcommand_redo
 	_vcommand_history_end
+
+	// misc commands
+	_vcommand_misc_beg
+	vcommand_autocompl_init
+	vcommand_autocompl_move_cursor_up
+	vcommand_autocompl_move_cursor_down
+	vcommand_autocompl_finalize
+	_vcommand_misc_end
 )
 
 func (c vcommand) class() vcommand_class {
@@ -1084,6 +1138,8 @@ func (c vcommand) class() vcommand_class {
 		return vcommand_class_deletion
 	case c > _vcommand_history_beg && c < _vcommand_history_end:
 		return vcommand_class_history
+	case c > _vcommand_misc_beg && c < _vcommand_misc_end:
+		return vcommand_class_misc
 	}
 	return vcommand_class_none
 }
