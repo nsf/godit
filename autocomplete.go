@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"github.com/nsf/termbox-go"
 	"github.com/nsf/tulib"
-	"strconv"
 	"io"
 	"os/exec"
+	"strconv"
 	"unicode/utf8"
 )
 
@@ -183,22 +183,30 @@ func (ac *autocompl) move_cursor_up() {
 	ac.cursor--
 }
 
-func (ac *autocompl) max_size() (int, int) {
+func (ac *autocompl) desired_height() int {
 	proposals := ac.actual_proposals()
-	minw, minh := 0, 0
+	minh := 0
 	for i := 0; i < ac_ui_max_lines; i++ {
 		n := ac.view + i
 		if n >= len(proposals) {
 			break
 		}
+		minh++
+	}
+	return minh
+}
 
+func (ac *autocompl) desired_width(height int) int {
+	proposals := ac.actual_proposals()
+	minw := 0
+	for i := 0; i < height; i++ {
+		n := ac.view + i
 		line_len := utf8.RuneCount(proposals[n].display)
 		if line_len > minw {
 			minw = line_len
 		}
-		minh++
 	}
-	return minw + 1, minh
+	return minw + 2
 }
 
 func (ac *autocompl) adjust_view(height int) {
@@ -241,10 +249,11 @@ func (ac *autocompl) slider_pos_and_rune(height int) (int, rune) {
 func (ac *autocompl) draw_onto(buf *tulib.Buffer, x, y int) {
 	ac.validate_cursor()
 
-	w, h := ac.max_size()
-	dst := find_place_for_rect(buf.Rect, tulib.Rect{x, y + 1, w, h})
-
+	h := ac.desired_height()
+	dst := find_place_for_rect(buf.Rect, tulib.Rect{x, y + 1, 1, h})
 	ac.adjust_view(dst.Height)
+	w := ac.desired_width(h)
+	dst = find_place_for_rect(buf.Rect, tulib.Rect{x, y + 1, w, h})
 
 	slider_i, slider_r := ac.slider_pos_and_rune(dst.Height)
 	lp := tulib.DefaultLabelParams
@@ -259,7 +268,7 @@ func (ac *autocompl) draw_onto(buf *tulib.Buffer, x, y int) {
 		n := ac.view + i
 		if n == ac.cursor {
 			lp.Fg = termbox.ColorWhite
-			lp.Bg = termbox.ColorCyan
+			lp.Bg = termbox.ColorBlue
 		}
 		buf.Fill(r, termbox.Cell{
 			Fg: lp.Fg,

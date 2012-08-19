@@ -3,8 +3,8 @@ package main
 import (
 	"bytes"
 	"github.com/nsf/tulib"
-	"unicode"
 	"strconv"
+	"unicode"
 )
 
 func needs_cursor(x, y int) bool {
@@ -138,7 +138,7 @@ func split_double_csv(data []byte) (a, b []byte) {
 }
 
 type line_reader struct {
-	data []byte
+	data   []byte
 	offset int
 }
 
