@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"github.com/nsf/termbox-go"
 	"github.com/nsf/tulib"
-	"io"
 	"os/exec"
 	"strconv"
 	"unicode/utf8"
@@ -44,7 +43,7 @@ type ac_proposal struct {
 	content []byte
 }
 
-type ac_func func(path string, r io.Reader, cursor cursor_location_ex) ([]ac_proposal, int)
+type ac_func func(view *view) ([]ac_proposal, int)
 
 type autocompl struct {
 	// data
@@ -63,11 +62,9 @@ type autocompl struct {
 // take a while.
 func new_autocompl(f ac_func, view *view) *autocompl {
 	var charsback int
-
-	origin_ex := make_cursor_location_ex(view.cursor)
 	ac := new(autocompl)
 	ac.filtered = make([]ac_proposal, 0, ac_max_filtered)
-	ac.proposals, charsback = f(view.buf.path, view.buf.reader(), origin_ex)
+	ac.proposals, charsback = f(view)
 	if len(ac.proposals) == 0 {
 		return nil
 	}
@@ -306,11 +303,12 @@ func (ac *autocompl) finalize(view *view) {
 // gocode autocompletion
 //----------------------------------------------------------------------------
 
-func gocode_ac_func(path string, r io.Reader, cursor cursor_location_ex) ([]ac_proposal, int) {
+func gocode_ac_func(view *view) ([]ac_proposal, int) {
+	cursor_ex := make_cursor_location_ex(view.cursor)
 	var out bytes.Buffer
-	gocode := exec.Command("gocode", "-f=godit",
-		"autocomplete", path, strconv.Itoa(cursor.abs_boffset))
-	gocode.Stdin = r
+	gocode := exec.Command("gocode", "-f=godit", "autocomplete",
+		view.buf.path, strconv.Itoa(cursor_ex.abs_boffset))
+	gocode.Stdin = view.buf.reader()
 	gocode.Stdout = &out
 
 	err := gocode.Run()
