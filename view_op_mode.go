@@ -126,8 +126,8 @@ func (v view_op_mode) select_name(ch rune) *view_tree {
 	return sel
 }
 
-func (v view_op_mode) cursor_position() (int, int) {
-	return -1, -1
+func (v view_op_mode) needs_cursor() bool {
+	return true
 }
 
 func (v view_op_mode) on_key(ev *termbox.Event) {

@@ -7,10 +7,6 @@ import (
 	"unicode"
 )
 
-func needs_cursor(x, y int) bool {
-	return x != -2 && y != -2
-}
-
 func grow_byte_slice(s []byte, desired_cap int) []byte {
 	if cap(s) < desired_cap {
 		ns := make([]byte, len(s), desired_cap)

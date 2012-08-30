@@ -66,6 +66,15 @@ type status_reporter interface {
 }
 
 //----------------------------------------------------------------------------
+// default autocompletion type decision function
+//----------------------------------------------------------------------------
+
+func default_ac_decide(view *view) ac_func {
+	// stupid at the moment
+	return gocode_ac
+}
+
+//----------------------------------------------------------------------------
 // view
 //
 // Think of it as a window. It draws contents from a portion of a buffer into
@@ -82,6 +91,7 @@ type view struct {
 	oneline             bool
 	ac                  *autocompl
 	last_vcommand_class vcommand_class
+	ac_decide           ac_decide_func
 }
 
 func new_view(sr status_reporter, buf *buffer) *view {
@@ -89,6 +99,7 @@ func new_view(sr status_reporter, buf *buffer) *view {
 	v.sr = sr
 	v.uibuf = tulib.NewBuffer(1, 1)
 	v.attach(buf)
+	v.ac_decide = default_ac_decide
 	return v
 }
 
@@ -121,7 +132,10 @@ func (v *view) detach() {
 }
 
 func (v *view) init_autocompl() {
-	v.ac = new_autocompl(gocode_ac_func, v)
+	ac_func := v.ac_decide(v)
+	if ac_func != nil {
+		v.ac = new_autocompl(ac_func, v)
+	}
 }
 
 // Resize the 'v.uibuf', adjusting things accordingly.
@@ -681,6 +695,10 @@ func (v *view) redo() {
 }
 
 func (v *view) action_insert(c cursor_location, data []byte) {
+	if v.oneline {
+		data = bytes.Replace(data, []byte{'\n'}, nil, -1)
+	}
+
 	v.maybe_next_action_group()
 	a := action{
 		what:   action_insert,

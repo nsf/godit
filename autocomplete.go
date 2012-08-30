@@ -43,7 +43,10 @@ type ac_proposal struct {
 	content []byte
 }
 
-type ac_func func(view *view) ([]ac_proposal, int)
+type (
+	ac_func        func(view *view) ([]ac_proposal, int)
+	ac_decide_func func(view *view) ac_func
+)
 
 type autocompl struct {
 	// data
@@ -303,7 +306,7 @@ func (ac *autocompl) finalize(view *view) {
 // gocode autocompletion
 //----------------------------------------------------------------------------
 
-func gocode_ac_func(view *view) ([]ac_proposal, int) {
+func gocode_ac(view *view) ([]ac_proposal, int) {
 	cursor_ex := make_cursor_location_ex(view.cursor)
 	var out bytes.Buffer
 	gocode := exec.Command("gocode", "-f=godit", "autocomplete",
@@ -334,4 +337,27 @@ func gocode_ac_func(view *view) ([]ac_proposal, int) {
 		proposals[i].content = c
 	}
 	return proposals, charsback
+}
+
+//----------------------------------------------------------------------------
+// buffer autocompletion
+//----------------------------------------------------------------------------
+
+func make_godit_buffer_ac_decide(godit *godit) ac_decide_func {
+	return func(view *view) ac_func {
+		return make_godit_buffer_ac(godit)
+	}
+}
+
+func make_godit_buffer_ac(godit *godit) ac_func {
+	return func(view *view) ([]ac_proposal, int) {
+		proposals := make([]ac_proposal, len(godit.buffers))
+		for i, buf := range godit.buffers {
+			path := []byte(buf.path)
+			proposals[i].display = path
+			proposals[i].content = path
+		}
+
+		return proposals, view.cursor_coffset
+	}
 }

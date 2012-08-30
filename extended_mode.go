@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/nsf/termbox-go"
 	"github.com/nsf/tulib"
+	"io/ioutil"
 )
 
 //----------------------------------------------------------------------------
@@ -54,6 +55,23 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 				g.active = sibling
 				g.active.leaf.activate()
 			}
+		case 'b':
+			g.set_overlay_mode(init_line_edit_mode(line_edit_mode_params{
+				godit:           g,
+				ac_decide:       make_godit_buffer_ac_decide(g),
+				prompt:          "Buffer:",
+				initial_content: g.active.leaf.buf.path,
+				on_apply: func(buf *buffer) {
+					b, _ := ioutil.ReadAll(buf.reader())
+					bs := string(b)
+					for _, buf := range g.buffers {
+						if buf.path == bs {
+							g.active.leaf.attach(buf)
+						}
+					}
+				},
+			}))
+			return
 		default:
 			goto undefined
 		}

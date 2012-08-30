@@ -345,7 +345,7 @@ func (g *godit) draw_autocompl() {
 func (g *godit) draw() {
 	var overlay_needs_cursor bool
 	if g.overlay != nil {
-		overlay_needs_cursor = needs_cursor(g.overlay.cursor_position())
+		overlay_needs_cursor = g.overlay.needs_cursor()
 	}
 
 	// draw everything
@@ -365,11 +365,11 @@ func (g *godit) draw() {
 
 	// update cursor position
 	var cx, cy int
-	if !overlay_needs_cursor {
-		cx, cy = g.cursor_position()
-	} else {
+	if overlay_needs_cursor {
 		// this can be true, only when g.overlay != nil, see above
 		cx, cy = g.overlay.cursor_position()
+	} else {
+		cx, cy = g.cursor_position()
 	}
 	termbox.SetCursor(cx, cy)
 }
@@ -505,6 +505,7 @@ func (g *godit) set_overlay_mode(m overlay_mode) {
 //----------------------------------------------------------------------------
 
 type overlay_mode interface {
+	needs_cursor() bool
 	cursor_position() (int, int)
 	exit()
 	draw()
@@ -514,7 +515,8 @@ type overlay_mode interface {
 
 type stub_overlay_mode struct{}
 
-func (stub_overlay_mode) cursor_position() (int, int) { return -2, -2 }
+func (stub_overlay_mode) needs_cursor() bool          { return false }
+func (stub_overlay_mode) cursor_position() (int, int) { return -1, -1 }
 func (stub_overlay_mode) exit()                       {}
 func (stub_overlay_mode) draw()                       {}
 func (stub_overlay_mode) on_resize(ev *termbox.Event) {}
