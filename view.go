@@ -117,7 +117,10 @@ func (v *view) attach(b *buffer) {
 		return
 	}
 
-	v.detach()
+	v.ac = nil
+	if v.buf != nil {
+		v.detach()
+	}
 	v.buf = b
 	v.view_location = b.loc
 	b.add_view(v)
@@ -125,10 +128,8 @@ func (v *view) attach(b *buffer) {
 }
 
 func (v *view) detach() {
-	if v.buf != nil {
-		v.buf.delete_view(v)
-		v.buf = nil
-	}
+	v.buf.delete_view(v)
+	v.buf = nil
 }
 
 func (v *view) init_autocompl() {
