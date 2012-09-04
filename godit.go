@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/nsf/termbox-go"
 	"github.com/nsf/tulib"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 )
@@ -328,6 +329,26 @@ func (g *godit) set_overlay_mode(m overlay_mode) {
 		g.overlay.exit()
 	}
 	g.overlay = m
+}
+
+// "lemp" stands for "line edit mode params"
+func (g *godit) switch_buffer_lemp() line_edit_mode_params {
+	return line_edit_mode_params{
+		godit:          g,
+		ac_decide:      make_godit_buffer_ac_decide(g),
+		prompt:         "Buffer:",
+		init_autocompl: true,
+
+		on_apply: func(buf *buffer) {
+			b, _ := ioutil.ReadAll(buf.reader())
+			bs := string(b)
+			for _, buf := range g.buffers {
+				if buf.name == bs {
+					g.active.leaf.attach(buf)
+				}
+			}
+		},
+	}
 }
 
 func main() {

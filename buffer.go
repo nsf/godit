@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"unicode/utf8"
 )
@@ -205,6 +206,11 @@ func (b *buffer) dump_history() {
 
 func (b *buffer) reader() *buffer_reader {
 	return new_buffer_reader(b)
+}
+
+func (b *buffer) contents() []byte {
+	data, _ := ioutil.ReadAll(b.reader())
+	return data
 }
 
 //----------------------------------------------------------------------------

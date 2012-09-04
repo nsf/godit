@@ -136,6 +136,10 @@ func (v *view) init_autocompl() {
 	ac_func := v.ac_decide(v)
 	if ac_func != nil {
 		v.ac = new_autocompl(ac_func, v)
+		if v.ac != nil && len(v.ac.actual_proposals()) == 1 {
+			v.ac.finalize(v)
+			v.ac = nil
+		}
 	}
 }
 

@@ -29,6 +29,7 @@ type line_edit_mode_params struct {
 	ac_decide       ac_decide_func
 	prompt          string
 	initial_content string
+	init_autocompl  bool
 }
 
 func (l *line_edit_mode) exit() {
@@ -41,19 +42,26 @@ func (l *line_edit_mode) on_key(ev *termbox.Event) {
 	switch ev.Key {
 	case termbox.KeyEnter, termbox.KeyCtrlJ:
 		if l.lineview.ac != nil {
-			break
+			goto handle_view_key
 		}
 
 		if l.on_apply != nil {
 			l.on_apply(l.linebuf)
 		}
 		l.godit.set_overlay_mode(nil)
-		return
 	case termbox.KeyTab:
 		l.lineview.on_vcommand(vcommand_autocompl_init, 0)
-		return
+	case termbox.KeyArrowUp:
+		l.lineview.on_vcommand(vcommand_autocompl_move_cursor_up, 0)
+	case termbox.KeyArrowDown:
+		l.lineview.on_vcommand(vcommand_autocompl_move_cursor_down, 0)
+	default:
+		goto handle_view_key
 	}
 
+	return
+
+handle_view_key:
 	l.lineview.on_key(ev)
 }
 
@@ -126,5 +134,8 @@ func init_line_edit_mode(p line_edit_mode_params) *line_edit_mode {
 	l.prompt_w = utf8.RuneCount(l.prompt)
 	l.lineview.resize(l.godit.uibuf.Width-l.prompt_w-1, 1)
 	l.lineview.on_vcommand(vcommand_move_cursor_end_of_line, 0)
+	if p.init_autocompl {
+		l.lineview.on_vcommand(vcommand_autocompl_init, 0)
+	}
 	return l
 }

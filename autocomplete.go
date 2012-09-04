@@ -6,6 +6,7 @@ import (
 	"github.com/nsf/tulib"
 	"os/exec"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -351,11 +352,16 @@ func make_godit_buffer_ac_decide(godit *godit) ac_decide_func {
 
 func make_godit_buffer_ac(godit *godit) ac_func {
 	return func(view *view) ([]ac_proposal, int) {
-		proposals := make([]ac_proposal, len(godit.buffers))
-		for i, buf := range godit.buffers {
-			path := []byte(buf.path)
-			proposals[i].display = path
-			proposals[i].content = path
+		prefix := string(view.buf.contents()[:view.cursor.boffset])
+		proposals := make([]ac_proposal, 0, 20)
+		for _, buf := range godit.buffers {
+			if strings.HasPrefix(buf.name, prefix) {
+				name := []byte(buf.name)
+				proposals = append(proposals, ac_proposal{
+					display: name,
+					content: name,
+				})
+			}
 		}
 
 		return proposals, view.cursor_coffset
