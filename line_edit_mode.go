@@ -23,7 +23,6 @@ type line_edit_mode struct {
 }
 
 type line_edit_mode_params struct {
-	godit           *godit
 	on_apply        func(buffer *buffer)
 	on_cancel       func()
 	ac_decide       ac_decide_func
@@ -121,13 +120,13 @@ func (l *line_edit_mode) cursor_position() (int, int) {
 	return x + lx, y + ly
 }
 
-func init_line_edit_mode(p line_edit_mode_params) *line_edit_mode {
+func init_line_edit_mode(godit *godit, p line_edit_mode_params) *line_edit_mode {
 	l := new(line_edit_mode)
-	l.godit = p.godit
+	l.godit = godit
 	l.on_apply = p.on_apply
 	l.on_cancel = p.on_cancel
 	l.linebuf, _ = new_buffer(strings.NewReader(p.initial_content))
-	l.lineview = new_view(p.godit, l.linebuf)
+	l.lineview = new_view(godit, l.linebuf)
 	l.lineview.oneline = true          // enable one line mode
 	l.lineview.ac_decide = p.ac_decide // override ac_decide function
 	l.prompt = []byte(p.prompt)

@@ -55,7 +55,10 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 				g.active.leaf.activate()
 			}
 		case 'b':
-			g.set_overlay_mode(init_line_edit_mode(g.switch_buffer_lemp()))
+			g.set_overlay_mode(init_line_edit_mode(g, g.switch_buffer_lemp()))
+			return
+		case 'f':
+			g.set_overlay_mode(init_line_edit_mode(g, g.open_buffer_lemp()))
 			return
 		default:
 			goto undefined

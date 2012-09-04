@@ -3,7 +3,10 @@ package main
 import (
 	"bytes"
 	"github.com/nsf/tulib"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"unicode"
 )
 
@@ -156,4 +159,15 @@ func (l *line_reader) read_line() []byte {
 
 func atoi(data []byte) (int, error) {
 	return strconv.Atoi(string(data))
+}
+
+func substitute_home(path string) string {
+	if !strings.HasPrefix(path, "~") {
+		return path
+	}
+	home := os.Getenv("HOME")
+	if home == "" {
+		panic("HOME is not set")
+	}
+	return filepath.Join(home, path[1:])
 }

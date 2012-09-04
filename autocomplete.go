@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"github.com/nsf/termbox-go"
 	"github.com/nsf/tulib"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -366,4 +369,69 @@ func make_godit_buffer_ac(godit *godit) ac_func {
 
 		return proposals, view.cursor_coffset
 	}
+}
+
+//----------------------------------------------------------------------------
+// file system autocompletion
+//----------------------------------------------------------------------------
+
+func filesystem_line_ac_decide(view *view) ac_func {
+	return filesystem_line_ac
+}
+
+type filesystem_slice []os.FileInfo
+
+func (s filesystem_slice) Len() int      { return len(s) }
+func (s filesystem_slice) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s filesystem_slice) Less(i, j int) bool {
+	idir := s[i].IsDir()
+	jdir := s[j].IsDir()
+	if idir != jdir {
+		if idir {
+			return true
+		}
+		return false
+	}
+
+	return s[i].Name() < s[j].Name()
+}
+
+func filesystem_line_ac(view *view) ([]ac_proposal, int) {
+	var dirfd *os.File
+	var err error
+	path := string(view.buf.contents()[:view.cursor.boffset])
+	path = substitute_home(path)
+	dir, partfile := filepath.Split(path)
+	if dir == "" {
+		dirfd, err = os.Open(".")
+	} else {
+		dirfd, err = os.Open(dir)
+	}
+	if err != nil {
+		return nil, 0
+	}
+	fis, err := dirfd.Readdir(-1)
+	if err != nil {
+		// can we recover something from here?
+		return nil, 0
+	}
+	sort.Sort(filesystem_slice(fis))
+	proposals := make([]ac_proposal, 0, 20)
+	for _, fi := range fis {
+		name := fi.Name()
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+		if strings.HasPrefix(name, partfile) {
+			suffix := ""
+			if fi.IsDir() {
+				suffix = "/"
+			}
+			proposals = append(proposals, ac_proposal{
+				display: []byte(dir + name + suffix),
+				content: []byte(dir + name + suffix),
+			})
+		}
+	}
+	return proposals, view.cursor_coffset
 }

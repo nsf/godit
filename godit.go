@@ -334,7 +334,6 @@ func (g *godit) set_overlay_mode(m overlay_mode) {
 // "lemp" stands for "line edit mode params"
 func (g *godit) switch_buffer_lemp() line_edit_mode_params {
 	return line_edit_mode_params{
-		godit:          g,
 		ac_decide:      make_godit_buffer_ac_decide(g),
 		prompt:         "Buffer:",
 		init_autocompl: true,
@@ -348,6 +347,14 @@ func (g *godit) switch_buffer_lemp() line_edit_mode_params {
 				}
 			}
 		},
+	}
+}
+
+// "lemp" stands for "line edit mode params"
+func (g *godit) open_buffer_lemp() line_edit_mode_params {
+	return line_edit_mode_params{
+		ac_decide: filesystem_line_ac_decide,
+		prompt:    "Find file:",
 	}
 }
 
