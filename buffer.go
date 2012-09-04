@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"unicode/utf8"
 )
 
@@ -65,7 +64,7 @@ type buffer struct {
 	name string
 }
 
-func new_buffer() *buffer {
+func new_empty_buffer() *buffer {
 	b := new(buffer)
 	l := new(line)
 	l.next = nil
@@ -84,28 +83,7 @@ func new_buffer() *buffer {
 	return b
 }
 
-func new_buffer_from_file(filename string) (*buffer, error) {
-	f, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	buf, err := new_buffer_from_reader(f)
-	if err != nil {
-		return nil, err
-	}
-
-	buf.name = filename
-	buf.path, err = filepath.Abs(filename)
-	if err != nil {
-		return nil, err
-	}
-
-	return buf, err
-}
-
-func new_buffer_from_reader(r io.Reader) (*buffer, error) {
+func new_buffer(r io.Reader) (*buffer, error) {
 	var err error
 	var prevline *line
 

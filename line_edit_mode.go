@@ -118,7 +118,7 @@ func init_line_edit_mode(p line_edit_mode_params) *line_edit_mode {
 	l.godit = p.godit
 	l.on_apply = p.on_apply
 	l.on_cancel = p.on_cancel
-	l.linebuf, _ = new_buffer_from_reader(strings.NewReader(p.initial_content))
+	l.linebuf, _ = new_buffer(strings.NewReader(p.initial_content))
 	l.lineview = new_view(p.godit, l.linebuf)
 	l.lineview.oneline = true          // enable one line mode
 	l.lineview.ac_decide = p.ac_decide // override ac_decide function

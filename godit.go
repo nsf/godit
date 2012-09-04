@@ -6,6 +6,7 @@ import (
 	"github.com/nsf/termbox-go"
 	"github.com/nsf/tulib"
 	"os"
+	"path/filepath"
 )
 
 const (
@@ -37,15 +38,13 @@ func new_godit(filenames []string) *godit {
 	g := new(godit)
 	g.buffers = make([]*buffer, 0, 20)
 	for _, filename := range filenames {
-		buf, err := new_buffer_from_file(filename)
+		_, err := g.new_buffer_from_file(filename)
 		if err != nil {
-			buf = new_buffer()
-			buf.name = filename
+			panic(err)
 		}
-		g.buffers = append(g.buffers, buf)
 	}
 	if len(g.buffers) == 0 {
-		buf := new_buffer()
+		buf := new_empty_buffer()
 		buf.name = "*new*"
 		g.buffers = append(g.buffers, buf)
 	}
@@ -55,6 +54,43 @@ func new_godit(filenames []string) *godit {
 	g.views = new_view_tree_leaf(nil, new_view(g, g.buffers[0]))
 	g.active = g.views
 	return g
+}
+
+func (g *godit) find_buffer_by_full_path(path string) *buffer {
+	for _, buf := range g.buffers {
+		if buf.path == path {
+			return buf
+		}
+	}
+	return nil
+}
+
+func (g *godit) new_buffer_from_file(filename string) (*buffer, error) {
+	fullpath, err := filepath.Abs(filename)
+	if err != nil {
+		panic(err)
+	}
+
+	buf := g.find_buffer_by_full_path(fullpath)
+	if buf != nil {
+		return buf, nil
+	}
+
+	f, err := os.Open(fullpath)
+	if err != nil {
+		buf = new_empty_buffer()
+	} else {
+		defer f.Close()
+		buf, err = new_buffer(f)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	buf.path = fullpath
+	buf.name = filename
+	g.buffers = append(g.buffers, buf)
+	return buf, nil
 }
 
 func (g *godit) set_status(format string, args ...interface{}) {
