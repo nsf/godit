@@ -34,6 +34,9 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 		return
 	case termbox.KeyCtrlA:
 		v.on_vcommand(vcommand_autocompl_init, 0)
+	case termbox.KeyCtrlF:
+		g.set_overlay_mode(init_line_edit_mode(g, g.open_buffer_lemp()))
+		return
 	default:
 		switch ev.Ch {
 		case 'w':
@@ -56,9 +59,6 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 			}
 		case 'b':
 			g.set_overlay_mode(init_line_edit_mode(g, g.switch_buffer_lemp()))
-			return
-		case 'f':
-			g.set_overlay_mode(init_line_edit_mode(g, g.open_buffer_lemp()))
 			return
 		default:
 			goto undefined

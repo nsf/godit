@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/nsf/termbox-go"
 	"github.com/nsf/tulib"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 )
@@ -49,9 +48,6 @@ func new_godit(filenames []string) *godit {
 		buf.name = "*new*"
 		g.buffers = append(g.buffers, buf)
 	}
-	if g.buffers[0].path == "" {
-		g.set_status("(New file)")
-	}
 	g.views = new_view_tree_leaf(nil, new_view(g, g.buffers[0]))
 	g.active = g.views
 	return g
@@ -64,6 +60,22 @@ func (g *godit) find_buffer_by_full_path(path string) *buffer {
 		}
 	}
 	return nil
+}
+
+func (g *godit) open_buffers_from_pattern(pattern string) {
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		panic(err)
+	}
+
+	var buf *buffer
+	for _, match := range matches {
+		buf, err = g.new_buffer_from_file(match)
+		if err != nil {
+			panic(err)
+		}
+	}
+	g.active.leaf.attach(buf)
 }
 
 func (g *godit) new_buffer_from_file(filename string) (*buffer, error) {
@@ -79,6 +91,7 @@ func (g *godit) new_buffer_from_file(filename string) (*buffer, error) {
 
 	f, err := os.Open(fullpath)
 	if err != nil {
+		g.set_status("(New file)")
 		buf = new_empty_buffer()
 	} else {
 		defer f.Close()
@@ -339,10 +352,9 @@ func (g *godit) switch_buffer_lemp() line_edit_mode_params {
 		init_autocompl: true,
 
 		on_apply: func(buf *buffer) {
-			b, _ := ioutil.ReadAll(buf.reader())
-			bs := string(b)
+			bufname := string(buf.contents())
 			for _, buf := range g.buffers {
-				if buf.name == bs {
+				if buf.name == bufname {
 					g.active.leaf.attach(buf)
 				}
 			}
@@ -355,6 +367,11 @@ func (g *godit) open_buffer_lemp() line_edit_mode_params {
 	return line_edit_mode_params{
 		ac_decide: filesystem_line_ac_decide,
 		prompt:    "Find file:",
+
+		on_apply: func(buf *buffer) {
+			pattern := string(buf.contents())
+			g.open_buffers_from_pattern(pattern)
+		},
 	}
 }
 
