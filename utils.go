@@ -10,6 +10,15 @@ import (
 	"unicode"
 )
 
+func index_first_non_space(s []byte) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] != '\t' && s[i] != ' ' {
+			return i
+		}
+	}
+	return -1
+}
+
 func abs_path(filename string) string {
 	path, err := filepath.Abs(filename)
 	if err != nil {
