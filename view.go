@@ -752,20 +752,23 @@ func (v *view) insert_rune(r rune) {
 	var data [utf8.UTFMax]byte
 	l := utf8.EncodeRune(data[:], r)
 	c := v.cursor
-	v.action_insert(c, data[:l])
-	if r == '\n' {
+	if r == '\n' || r == '\r' {
+		v.action_insert(c, []byte{'\n'})
 		prev := c.line
 		c.line = c.line.next
 		c.line_num++
 		c.boffset = 0
 
-		i := index_first_non_space(prev.data)
-		if i != -1 {
-			autoindent := clone_byte_slice(prev.data[:i])
-			v.action_insert(c, autoindent)
-			c.boffset += len(autoindent)
+		if r == '\n' {
+			i := index_first_non_space(prev.data)
+			if i != -1 {
+				autoindent := clone_byte_slice(prev.data[:i])
+				v.action_insert(c, autoindent)
+				c.boffset += len(autoindent)
+			}
 		}
 	} else {
+		v.action_insert(c, data[:l])
 		c.boffset += l
 	}
 	v.move_cursor_to(c)
@@ -1045,10 +1048,16 @@ func (v *view) on_key(ev *termbox.Event) {
 	case termbox.KeySpace:
 		v.on_vcommand(vcommand_insert_rune, ' ')
 	case termbox.KeyEnter, termbox.KeyCtrlJ:
+		c := '\n'
+		if ev.Key == termbox.KeyEnter {
+			// we use '\r' for <enter>, because it doesn't cause
+			// autoindent
+			c = '\r'
+		}
 		if v.ac != nil {
 			v.on_vcommand(vcommand_autocompl_finalize, 0)
 		} else {
-			v.on_vcommand(vcommand_insert_rune, '\n')
+			v.on_vcommand(vcommand_insert_rune, c)
 		}
 	case termbox.KeyBackspace, termbox.KeyBackspace2:
 		v.on_vcommand(vcommand_delete_rune_backward, 0)
