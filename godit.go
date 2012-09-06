@@ -79,11 +79,7 @@ func (g *godit) open_buffers_from_pattern(pattern string) {
 }
 
 func (g *godit) new_buffer_from_file(filename string) (*buffer, error) {
-	fullpath, err := filepath.Abs(filename)
-	if err != nil {
-		panic(err)
-	}
-
+	fullpath := abs_path(filename)
 	buf := g.find_buffer_by_full_path(fullpath)
 	if buf != nil {
 		return buf, nil
@@ -99,9 +95,9 @@ func (g *godit) new_buffer_from_file(filename string) (*buffer, error) {
 		if err != nil {
 			return nil, err
 		}
+		buf.path = fullpath
 	}
 
-	buf.path = fullpath
 	buf.name = filename
 	g.buffers = append(g.buffers, buf)
 	return buf, nil
@@ -371,6 +367,29 @@ func (g *godit) open_buffer_lemp() line_edit_mode_params {
 		on_apply: func(buf *buffer) {
 			pattern := string(buf.contents())
 			g.open_buffers_from_pattern(pattern)
+		},
+	}
+}
+
+// "lemp" stands for "line edit mode params"
+func (g *godit) save_as_buffer_lemp(v *view) line_edit_mode_params {
+	b := v.buf
+	return line_edit_mode_params{
+		ac_decide:       filesystem_line_ac_decide,
+		prompt:          "File to save in:",
+		initial_content: b.name,
+
+		on_apply: func(linebuf *buffer) {
+			v.finalize_action_group()
+			fullpath := abs_path(string(linebuf.contents()))
+			err := b.save_as(fullpath)
+			if err != nil {
+				g.set_status(err.Error())
+			} else {
+				b.path = fullpath
+				v.dirty |= dirty_status
+				g.set_status("Wrote %s", b.path)
+			}
 		},
 	}
 }

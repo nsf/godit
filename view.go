@@ -83,8 +83,8 @@ func default_ac_decide(view *view) ac_func {
 
 type view struct {
 	view_location
-	sr                  status_reporter
-	status              bytes.Buffer // temporary buffer for status bar text
+	status_reporter     status_reporter
+	tmpbuf              bytes.Buffer // temporary buffer for status bar text
 	buf                 *buffer      // currently displayed buffer
 	uibuf               tulib.Buffer
 	dirty               dirty_flag
@@ -96,7 +96,7 @@ type view struct {
 
 func new_view(sr status_reporter, buf *buffer) *view {
 	v := new(view)
-	v.sr = sr
+	v.status_reporter = sr
 	v.uibuf = tulib.NewBuffer(1, 1)
 	v.attach(buf)
 	v.ac_decide = default_ac_decide
@@ -301,7 +301,7 @@ func (v *view) draw_status() {
 		return
 	}
 
-	// draw status bar
+	// fill background with '─'
 	lp := tulib.DefaultLabelParams
 	lp.Bg = termbox.AttrReverse
 	lp.Fg = termbox.AttrReverse | termbox.AttrBold
@@ -310,17 +310,29 @@ func (v *view) draw_status() {
 		Bg: termbox.AttrReverse,
 		Ch: '─',
 	})
-	fmt.Fprintf(&v.status, "  %s  ", v.buf.name)
-	v.uibuf.DrawLabel(tulib.Rect{3, v.height(), v.uibuf.Width, 1},
-		&lp, v.status.Bytes())
 
-	namel := v.status.Len()
+	// on disk sync status
+	if !v.buf.synced_with_disk() {
+		cell := termbox.Cell{
+			Fg: termbox.AttrReverse,
+			Bg: termbox.AttrReverse,
+			Ch: '*',
+		}
+		v.uibuf.Set(1, v.height(), cell)
+		v.uibuf.Set(2, v.height(), cell)
+	}
+
+	// filename
+	fmt.Fprintf(&v.tmpbuf, "  %s  ", v.buf.name)
+	v.uibuf.DrawLabel(tulib.Rect{5, v.height(), v.uibuf.Width, 1},
+		&lp, v.tmpbuf.Bytes())
+	namel := v.tmpbuf.Len()
 	lp.Fg = termbox.AttrReverse
-	v.status.Reset()
-	fmt.Fprintf(&v.status, "(%d, %d)  ", v.cursor.line_num, v.cursor_voffset)
-	v.uibuf.DrawLabel(tulib.Rect{3 + namel, v.height(), v.uibuf.Width, 1},
-		&lp, v.status.Bytes())
-	v.status.Reset()
+	v.tmpbuf.Reset()
+	fmt.Fprintf(&v.tmpbuf, "(%d, %d)  ", v.cursor.line_num, v.cursor_voffset)
+	v.uibuf.DrawLabel(tulib.Rect{5 + namel, v.height(), v.uibuf.Width, 1},
+		&lp, v.tmpbuf.Bytes())
+	v.tmpbuf.Reset()
 }
 
 // Draw the current view to the 'v.uibuf'.
@@ -504,7 +516,7 @@ func (v *view) move_cursor_to(c cursor_location) {
 func (v *view) move_cursor_forward() {
 	c := v.cursor
 	if c.last_line() && c.eol() {
-		v.sr.set_status("End of buffer")
+		v.status_reporter.set_status("End of buffer")
 		return
 	}
 
@@ -516,7 +528,7 @@ func (v *view) move_cursor_forward() {
 func (v *view) move_cursor_backward() {
 	c := v.cursor
 	if c.first_line() && c.bol() {
-		v.sr.set_status("Beginning of buffer")
+		v.status_reporter.set_status("Beginning of buffer")
 		return
 	}
 
@@ -531,7 +543,7 @@ func (v *view) move_cursor_next_line() {
 		c = cursor_location{c.line.next, c.line_num + 1, -1}
 		v.move_cursor_to(c)
 	} else {
-		v.sr.set_status("End of buffer")
+		v.status_reporter.set_status("End of buffer")
 	}
 }
 
@@ -542,7 +554,7 @@ func (v *view) move_cursor_prev_line() {
 		c = cursor_location{c.line.prev, c.line_num - 1, -1}
 		v.move_cursor_to(c)
 	} else {
-		v.sr.set_status("Beginning of buffer")
+		v.status_reporter.set_status("Beginning of buffer")
 	}
 }
 
@@ -578,7 +590,7 @@ func (v *view) move_cursor_word_forward() {
 	ok := c.move_one_word_forward()
 	v.move_cursor_to(c)
 	if !ok {
-		v.sr.set_status("End of buffer")
+		v.status_reporter.set_status("End of buffer")
 	}
 }
 
@@ -587,7 +599,7 @@ func (v *view) move_cursor_word_backward() {
 	ok := c.move_one_word_backward()
 	v.move_cursor_to(c)
 	if !ok {
-		v.sr.set_status("Beginning of buffer")
+		v.status_reporter.set_status("Beginning of buffer")
 	}
 }
 
@@ -759,7 +771,7 @@ func (v *view) delete_rune_backward() {
 	if c.bol() {
 		if c.first_line() {
 			// beginning of the file
-			v.sr.set_status("Beginning of buffer")
+			v.status_reporter.set_status("Beginning of buffer")
 			return
 		}
 		c.line = c.line.prev
@@ -786,7 +798,7 @@ func (v *view) delete_rune() {
 	if c.eol() {
 		if c.last_line() {
 			// end of the file
-			v.sr.set_status("End of buffer")
+			v.status_reporter.set_status("End of buffer")
 			return
 		}
 		v.action_delete(c, 1)
@@ -824,7 +836,7 @@ func (v *view) kill_word() {
 
 func (v *view) kill_region() {
 	if !v.buf.is_mark_set() {
-		v.sr.set_status("The mark is not set now, so there is no region")
+		v.status_reporter.set_status("The mark is not set now, so there is no region")
 		return
 	}
 
@@ -845,7 +857,7 @@ func (v *view) kill_region() {
 
 func (v *view) set_mark() {
 	v.buf.mark = v.cursor
-	v.sr.set_status("Mark set")
+	v.status_reporter.set_status("Mark set")
 }
 
 func (v *view) swap_cursor_and_mark() {

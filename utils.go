@@ -10,6 +10,14 @@ import (
 	"unicode"
 )
 
+func abs_path(filename string) string {
+	path, err := filepath.Abs(filename)
+	if err != nil {
+		panic(err)
+	}
+	return path
+}
+
 func grow_byte_slice(s []byte, desired_cap int) []byte {
 	if cap(s) < desired_cap {
 		ns := make([]byte, len(s), desired_cap)

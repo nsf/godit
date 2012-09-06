@@ -23,6 +23,7 @@ func init_extended_mode(godit *godit) extended_mode {
 func (e extended_mode) on_key(ev *termbox.Event) {
 	g := e.godit
 	v := g.active.leaf
+	b := v.buf
 
 	switch ev.Key {
 	case termbox.KeyCtrlC:
@@ -36,6 +37,26 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 		v.on_vcommand(vcommand_autocompl_init, 0)
 	case termbox.KeyCtrlF:
 		g.set_overlay_mode(init_line_edit_mode(g, g.open_buffer_lemp()))
+		return
+	case termbox.KeyCtrlS:
+		if b.synced_with_disk() {
+			g.set_status("(No changes need to be saved)")
+			break
+		}
+
+		if b.path != "" {
+			v.finalize_action_group()
+			err := b.save()
+			if err != nil {
+				g.set_status(err.Error())
+			} else {
+				v.dirty |= dirty_status
+				g.set_status("Wrote %s", b.path)
+			}
+			break
+		}
+
+		g.set_overlay_mode(init_line_edit_mode(g, g.save_as_buffer_lemp(v)))
 		return
 	default:
 		switch ev.Ch {

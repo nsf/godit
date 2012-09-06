@@ -56,12 +56,15 @@ type buffer struct {
 	lines_n    int
 	bytes_n    int
 	history    *action_group
+	on_disk    *action_group
 	mark       cursor_location
 
-	// absoulte path if there is any, empty line otherwise
+	// absoulte path of the file, if it's empty string, then the file has no
+	// on-disk representation
 	path string
 
-	// buffer name (displayed in the status line)
+	// buffer name (displayed in the status line), must be unique,
+	// uniqueness is maintained by godit methods
 	name string
 }
 
@@ -99,7 +102,6 @@ func new_buffer(r io.Reader) (*buffer, error) {
 			line_num: 1,
 		},
 	}
-	b.init_history()
 	b.lines_n = 1
 	b.first_line = l
 	for {
@@ -127,6 +129,10 @@ func new_buffer(r io.Reader) (*buffer, error) {
 	if err == io.EOF {
 		err = nil
 	}
+
+	// history
+	b.init_history()
+	b.on_disk = b.history
 
 	return b, err
 }
@@ -202,6 +208,30 @@ func (b *buffer) dump_history() {
 		cur = cur.next
 		i++
 	}
+}
+
+func (b *buffer) save() error {
+	return b.save_as(b.path)
+}
+
+func (b *buffer) save_as(filename string) error {
+	r := b.reader()
+	f, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+
+	_, err = io.Copy(f, r)
+	if err != nil {
+		return err
+	}
+
+	b.on_disk = b.history
+	return nil
+}
+
+func (b *buffer) synced_with_disk() bool {
+	return b.on_disk == b.history
 }
 
 func (b *buffer) reader() *buffer_reader {
