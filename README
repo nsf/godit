@@ -5,9 +5,12 @@ suggest to do that only on files under version control systems.
 
 Here's an incomplete hotkeys list:
 
-Global keys:
+System keys:
   C-g                       - Universal cancel button
+
+Global keys:
   C-x                       - Extended mode
+  M-g                       - Go to line
 
 Extended mode:
   C-c                       - Quit from godit

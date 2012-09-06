@@ -133,13 +133,19 @@ func (v *view) detach() {
 }
 
 func (v *view) init_autocompl() {
+	if v.ac_decide == nil {
+		return
+	}
+
 	ac_func := v.ac_decide(v)
-	if ac_func != nil {
-		v.ac = new_autocompl(ac_func, v)
-		if v.ac != nil && len(v.ac.actual_proposals()) == 1 {
-			v.ac.finalize(v)
-			v.ac = nil
-		}
+	if ac_func == nil {
+		return
+	}
+
+	v.ac = new_autocompl(ac_func, v)
+	if v.ac != nil && len(v.ac.actual_proposals()) == 1 {
+		v.ac.finalize(v)
+		v.ac = nil
 	}
 }
 
@@ -346,6 +352,20 @@ func (v *view) draw() {
 		v.dirty &^= dirty_status
 		v.draw_status()
 	}
+}
+
+// Center view on the cursor.
+func (v *view) center_view_on_cursor() {
+	v.top_line = v.cursor.line
+	v.top_line_num = v.cursor.line_num
+	v.move_top_line_n_times(-v.height() / 2)
+	v.dirty = dirty_everything
+}
+
+func (v *view) move_cursor_to_line(n int) {
+	v.move_cursor_beginning_of_file()
+	v.move_cursor_line_n_times(n - 1)
+	v.center_view_on_cursor()
 }
 
 // Move top line 'n' times forward or backward.
@@ -991,6 +1011,8 @@ func (v *view) on_vcommand(cmd vcommand, arg rune) {
 		v.move_cursor_beginning_of_file()
 	case vcommand_move_cursor_end_of_file:
 		v.move_cursor_end_of_file()
+	case vcommand_move_cursor_to_line:
+		v.move_cursor_to_line(int(arg))
 	case vcommand_move_view_half_forward:
 		v.maybe_move_view_n_lines(v.height() / 2)
 	case vcommand_move_view_half_backward:
@@ -1145,6 +1167,7 @@ const (
 	vcommand_move_cursor_end_of_line
 	vcommand_move_cursor_beginning_of_file
 	vcommand_move_cursor_end_of_file
+	vcommand_move_cursor_to_line
 	vcommand_move_view_half_forward
 	vcommand_move_view_half_backward
 	vcommand_set_mark

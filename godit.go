@@ -7,6 +7,7 @@ import (
 	"github.com/nsf/tulib"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
 const (
@@ -262,11 +263,23 @@ func (g *godit) on_sys_key(ev *termbox.Event) {
 	}
 }
 
+func (g *godit) on_alt_key(ev *termbox.Event) bool {
+	switch ev.Ch {
+	case 'g':
+		g.set_overlay_mode(init_line_edit_mode(g, g.goto_line_lemp()))
+		return true
+	}
+	return false
+}
+
 func (g *godit) on_key(ev *termbox.Event) {
 	switch ev.Key {
 	case termbox.KeyCtrlX:
 		g.set_overlay_mode(init_extended_mode(g))
 	default:
+		if ev.Mod&termbox.ModAlt != 0 && g.on_alt_key(ev) {
+			break
+		}
 		g.active.leaf.on_key(ev)
 	}
 }
@@ -372,7 +385,8 @@ func (g *godit) open_buffer_lemp() line_edit_mode_params {
 }
 
 // "lemp" stands for "line edit mode params"
-func (g *godit) save_as_buffer_lemp(v *view) line_edit_mode_params {
+func (g *godit) save_as_buffer_lemp() line_edit_mode_params {
+	v := g.active.leaf
 	b := v.buf
 	return line_edit_mode_params{
 		ac_decide:       filesystem_line_ac_decide,
@@ -390,6 +404,23 @@ func (g *godit) save_as_buffer_lemp(v *view) line_edit_mode_params {
 				v.dirty |= dirty_status
 				g.set_status("Wrote %s", b.path)
 			}
+		},
+	}
+}
+
+// "lemp" stands for "line edit mode params"
+func (g *godit) goto_line_lemp() line_edit_mode_params {
+	v := g.active.leaf
+	return line_edit_mode_params{
+		prompt: "Goto line:",
+		on_apply: func(buf *buffer) {
+			numstr := string(buf.contents())
+			num, err := strconv.Atoi(numstr)
+			if err != nil {
+				g.set_status(err.Error())
+				return
+			}
+			v.on_vcommand(vcommand_move_cursor_to_line, rune(num))
 		},
 	}
 }

@@ -56,7 +56,7 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 			break
 		}
 
-		g.set_overlay_mode(init_line_edit_mode(g, g.save_as_buffer_lemp(v)))
+		g.set_overlay_mode(init_line_edit_mode(g, g.save_as_buffer_lemp()))
 		return
 	default:
 		switch ev.Ch {
