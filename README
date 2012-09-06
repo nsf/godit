@@ -1,3 +1,53 @@
 A very religious text editor. In design and early development stage.
 
-Use at your own risk.
+I've recently added buffer saving feature, use at your own risk. I strongly
+suggest to do that only on files under version control systems.
+
+Here's an incomplete hotkeys list:
+
+Global keys:
+  C-g                       - Universal cancel button
+  C-x                       - Extended mode
+
+Extended mode:
+  C-c                       - Quit from godit
+  C-x                       - Swap cursor and mark locations
+  C-w, w                    - Enter view operations mode
+  0                         - Kill active view
+  1                         - Kill all views but active
+  2                         - Split active view vertically
+  3                         - Split active view horizontally
+  o                         - Make a sibling view active
+
+View operations mode:
+  v                         - Split active view vertically
+  h                         - Split active view horizontally
+  k                         - Kill active view
+  C-f, <right>              - Expand/shrink active view to the right
+  C-b, <left>               - Expand/shrink active view to the left
+  C-n, <down>               - Expand/shrink active view to the bottom
+  C-p, <up>                 - Expand/shrink active view to the top
+  1, 2, 3, 4, 5, 6, 7, ...  - Select view
+
+View keys:
+  C-f, <right>              - Move cursor forward
+  M-f                       - Move cursor one word forward
+  C-b, <left>               - Move cursor backward
+  M-b                       - Move cursor one word backward
+  C-n, <down>               - Move cursor to the next line
+  C-p, <up>                 - Move cursor to the previous line
+  C-e, <end>                - Move cursor to the end of line
+  C-a, <home>               - Move cursor to the beginning of the line
+  C-v, <pgdn>               - Move view forward (half of the screen)
+  M-v, <pgup>               - Move view backward (half of the screen)
+  C-j                       - Insert a newline character and autoindent
+  <enter> (or C-m)          - Insert a newline character
+  <backspace>, <backspace2> - Delete one character backwards
+  C-d, <delete>             - Delete one character in-place
+  C-<space>                 - Set mark
+  M-d                       - Kill word
+  C-k                       - Kill line
+  C-w                       - Kill region (between the cursor and the mark)
+  M-n                       - Move cursor one menu entry down (autocompletion)
+  M-p                       - Move cursor one menu entry up (autocompletion)
+  C-/ (or C-_ or C-7)       - Undo
