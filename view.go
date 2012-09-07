@@ -185,16 +185,13 @@ func (v *view) width() int {
 	return v.uibuf.Width
 }
 
-// This function is similar to what happens inside 'draw', but it contains a
-// certain amount of specific code related to 'loc.line_voffset'. You shouldn't
-// use it directly, call 'draw' instead.
-func (v *view) draw_cursor_line(line *line, coff int) {
+func (v *view) draw_line(line *line, coff, line_voffset int) {
 	x := 0
 	tabstop := 0
-	linedata := line.data
+	data := line.data
 	for {
-		rx := x - v.line_voffset
-		if len(linedata) == 0 {
+		rx := x - line_voffset
+		if len(data) == 0 {
 			break
 		}
 
@@ -208,11 +205,11 @@ func (v *view) draw_cursor_line(line *line, coff int) {
 			break
 		}
 
-		r, rlen := utf8.DecodeRune(linedata)
+		r, rlen := utf8.DecodeRune(data)
 		if r == '\t' {
 			// fill with spaces to the next tabstop
 			for ; x < tabstop; x++ {
-				rx := x - v.line_voffset
+				rx := x - line_voffset
 				if rx >= v.uibuf.Width {
 					break
 				}
@@ -227,10 +224,10 @@ func (v *view) draw_cursor_line(line *line, coff int) {
 			}
 			x++
 		}
-		linedata = linedata[rlen:]
+		data = data[rlen:]
 	}
 
-	if v.line_voffset != 0 {
+	if line_voffset != 0 {
 		v.uibuf.Cells[coff].Ch = '←'
 	}
 }
@@ -257,46 +254,11 @@ func (v *view) draw_contents() {
 
 		if line == v.cursor.line {
 			// special case, cursor line
-			v.draw_cursor_line(line, coff)
-			coff += v.uibuf.Width
-			line = line.next
-			continue
+			v.draw_line(line, coff, v.line_voffset)
+		} else {
+			v.draw_line(line, coff, 0)
 		}
 
-		x := 0
-		tabstop := 0
-		linedata := line.data
-		for {
-			if len(linedata) == 0 {
-				break
-			}
-
-			// advance tab stop to the next closest position
-			if x == tabstop {
-				tabstop += tabstop_length
-			}
-
-			if x >= v.uibuf.Width {
-				last := coff + v.uibuf.Width - 1
-				v.uibuf.Cells[last].Ch = '→'
-				break
-			}
-			r, rlen := utf8.DecodeRune(linedata)
-			if r == '\t' {
-				// fill with spaces to the next tabstop
-				for ; x < tabstop; x++ {
-					if x >= v.uibuf.Width {
-						break
-					}
-
-					v.uibuf.Cells[coff+x].Ch = ' '
-				}
-			} else {
-				v.uibuf.Cells[coff+x].Ch = r
-				x++
-			}
-			linedata = linedata[rlen:]
-		}
 		coff += v.uibuf.Width
 		line = line.next
 	}
@@ -464,7 +426,7 @@ func (v *view) adjust_line_voffset() {
 	cvo := v.cursor_voffset
 	threshold := w - 1
 	if vo != 0 {
-		threshold -= ht - 1
+		threshold = w - ht
 	}
 
 	if cvo-vo >= threshold {
@@ -516,6 +478,9 @@ func (v *view) move_cursor_to(c cursor_location) {
 	if c.line == v.cursor.line {
 		v.last_cursor_voffset = v.cursor_voffset
 	} else {
+		if v.line_voffset != 0 {
+			v.dirty = dirty_everything
+		}
 		v.line_voffset = 0
 	}
 	v.cursor.line = c.line
