@@ -58,6 +58,22 @@ type view_location struct {
 }
 
 //----------------------------------------------------------------------------
+// byte_range
+//----------------------------------------------------------------------------
+
+type byte_range struct {
+	begin int
+	end int
+}
+
+func (r byte_range) includes(offset int) bool {
+	return r.begin <= offset && r.end > offset
+}
+
+const hl_fg = termbox.ColorCyan
+const hl_bg = termbox.ColorBlue
+
+//----------------------------------------------------------------------------
 // status reporter
 //----------------------------------------------------------------------------
 
@@ -92,6 +108,8 @@ type view struct {
 	ac                  *autocompl
 	last_vcommand_class vcommand_class
 	ac_decide           ac_decide_func
+	highlight_bytes     []byte
+	highlight_ranges    []byte_range
 }
 
 func new_view(sr status_reporter, buf *buffer) *view {
@@ -100,6 +118,7 @@ func new_view(sr status_reporter, buf *buffer) *view {
 	v.uibuf = tulib.NewBuffer(1, 1)
 	v.attach(buf)
 	v.ac_decide = default_ac_decide
+	v.highlight_ranges = make([]byte_range, 0, 10)
 	return v
 }
 
@@ -188,7 +207,12 @@ func (v *view) width() int {
 func (v *view) draw_line(line *line, coff, line_voffset int) {
 	x := 0
 	tabstop := 0
+	bx := 0
 	data := line.data
+
+	if len(v.highlight_bytes) > 0 {
+		v.find_highlight_ranges_for_line(data)
+	}
 	for {
 		rx := x - line_voffset
 		if len(data) == 0 {
@@ -201,7 +225,11 @@ func (v *view) draw_line(line *line, coff, line_voffset int) {
 
 		if rx >= v.uibuf.Width {
 			last := coff + v.uibuf.Width - 1
-			v.uibuf.Cells[last].Ch = '→'
+			v.uibuf.Cells[last] = termbox.Cell{
+				Ch: '→',
+				Fg: termbox.ColorDefault,
+				Bg: termbox.ColorDefault,
+			}
 			break
 		}
 
@@ -215,24 +243,43 @@ func (v *view) draw_line(line *line, coff, line_voffset int) {
 				}
 
 				if rx >= 0 {
-					v.uibuf.Cells[coff+rx].Ch = ' '
+					cell := &v.uibuf.Cells[coff+rx]
+					cell.Ch = ' '
+					if v.in_one_of_highlight_ranges(bx) {
+						cell.Fg = hl_fg
+						cell.Bg = hl_bg
+					}
 				}
 			}
 		} else {
 			if rx >= 0 {
-				v.uibuf.Cells[coff+rx].Ch = r
+				cell := &v.uibuf.Cells[coff+rx]
+				cell.Ch = r
+				if v.in_one_of_highlight_ranges(bx) {
+					cell.Fg = hl_fg
+					cell.Bg = hl_bg
+				}
 			}
 			x++
 		}
 		data = data[rlen:]
+		bx += rlen
 	}
 
 	if line_voffset != 0 {
-		v.uibuf.Cells[coff].Ch = '←'
+		v.uibuf.Cells[coff] = termbox.Cell{
+			Ch: '←',
+			Fg: termbox.ColorDefault,
+			Bg: termbox.ColorDefault,
+		}
 	}
 }
 
 func (v *view) draw_contents() {
+	if len(v.highlight_bytes) == 0 {
+		v.highlight_ranges = v.highlight_ranges[:0]
+	}
+
 	// clear the buffer
 	v.uibuf.Fill(v.uibuf.Rect, termbox.Cell{
 		Ch: ' ',
@@ -1100,6 +1147,33 @@ func (v *view) dump_info() {
 	}
 
 	p("Top line num: %d\n", v.top_line_num)
+}
+
+func (v *view) find_highlight_ranges_for_line(data []byte) {
+	v.highlight_ranges = v.highlight_ranges[:0]
+	offset := 0
+	for {
+		i := bytes.Index(data, v.highlight_bytes)
+		if i == -1 {
+			return
+		}
+
+		v.highlight_ranges = append(v.highlight_ranges, byte_range{
+			begin: offset + i,
+			end: offset + i + len(v.highlight_bytes),
+		})
+		data = data[i+len(v.highlight_bytes):]
+		offset += i+len(v.highlight_bytes)
+	}
+}
+
+func (v *view) in_one_of_highlight_ranges(offset int) bool {
+	for _, r := range v.highlight_ranges {
+		if r.includes(offset) {
+			return true
+		}
+	}
+	return false
 }
 
 //----------------------------------------------------------------------------
