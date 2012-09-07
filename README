@@ -1,7 +1,21 @@
 A very religious text editor. In design and early development stage.
 
-I've recently added buffer saving feature, use at your own risk. I strongly
-suggest to do that only on files under version control systems.
+So, why do I call it religious, because it's very religious about many
+customizations you usually see in other text editors. There is a strong believe
+of the "one true way". But keep in mind that I'm not trying to enforce anyone
+into this, it's my way and editor is basically written for myself. Incomplete
+list would be:
+
+ - '\n' is the only way to end the line
+ - '\t' has width of 8 symbols
+ - indentation is always about tab characters
+ - syntax highlighting is a useless feature
+ - all text files are utf-8
+
+
+I've recently added buffer saving feature, so it is kind of usable now, but use
+at your own risk. I strongly suggest you to do that only on files under version
+control systems.
 
 Here's an incomplete hotkeys list:
 
