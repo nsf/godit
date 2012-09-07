@@ -664,8 +664,8 @@ func (v *view) move_cursor_word_backward() {
 func (v *view) move_view_n_lines(n int) {
 	prevtop := v.top_line_num
 	v.move_top_line_n_times(n)
-	v.adjust_cursor_line()
 	if prevtop != v.top_line_num {
+		v.adjust_cursor_line()
 		v.dirty = dirty_everything
 	}
 }
