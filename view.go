@@ -74,6 +74,37 @@ const hl_fg = termbox.ColorCyan
 const hl_bg = termbox.ColorBlue
 
 //----------------------------------------------------------------------------
+// view tags
+//----------------------------------------------------------------------------
+
+type view_tag struct {
+	begin_line int
+	begin_offset int
+	end_line int
+	end_offset int
+	fg termbox.Attribute
+	bg termbox.Attribute
+}
+
+func (t *view_tag) includes(line, offset int) bool {
+	if line < t.begin_line || line > t.end_line {
+		return false
+	}
+	if line == t.begin_line && offset < t.begin_offset {
+		return false
+	}
+	if line == t.end_line && offset >= t.end_offset {
+		return false
+	}
+	return true
+}
+
+var default_view_tag = view_tag{
+	fg: termbox.ColorDefault,
+	bg: termbox.ColorDefault,
+}
+
+//----------------------------------------------------------------------------
 // status reporter
 //----------------------------------------------------------------------------
 
@@ -110,6 +141,7 @@ type view struct {
 	ac_decide           ac_decide_func
 	highlight_bytes     []byte
 	highlight_ranges    []byte_range
+	tags                []view_tag
 }
 
 func new_view(sr status_reporter, buf *buffer) *view {
@@ -119,6 +151,7 @@ func new_view(sr status_reporter, buf *buffer) *view {
 	v.attach(buf)
 	v.ac_decide = default_ac_decide
 	v.highlight_ranges = make([]byte_range, 0, 10)
+	v.tags = make([]view_tag, 0, 10)
 	return v
 }
 
@@ -204,7 +237,7 @@ func (v *view) width() int {
 	return v.uibuf.Width
 }
 
-func (v *view) draw_line(line *line, coff, line_voffset int) {
+func (v *view) draw_line(line *line, line_num, coff, line_voffset int) {
 	x := 0
 	tabstop := 0
 	bx := 0
@@ -243,22 +276,14 @@ func (v *view) draw_line(line *line, coff, line_voffset int) {
 				}
 
 				if rx >= 0 {
-					cell := &v.uibuf.Cells[coff+rx]
-					cell.Ch = ' '
-					if v.in_one_of_highlight_ranges(bx) {
-						cell.Fg = hl_fg
-						cell.Bg = hl_bg
-					}
+					v.uibuf.Cells[coff+rx] = v.make_cell(
+						line_num, bx, ' ')
 				}
 			}
 		} else {
 			if rx >= 0 {
-				cell := &v.uibuf.Cells[coff+rx]
-				cell.Ch = r
-				if v.in_one_of_highlight_ranges(bx) {
-					cell.Fg = hl_fg
-					cell.Bg = hl_bg
-				}
+				v.uibuf.Cells[coff+rx] = v.make_cell(
+					line_num, bx, r)
 			}
 			x++
 		}
@@ -301,9 +326,9 @@ func (v *view) draw_contents() {
 
 		if line == v.cursor.line {
 			// special case, cursor line
-			v.draw_line(line, coff, v.line_voffset)
+			v.draw_line(line, v.top_line_num + y, coff, v.line_voffset)
 		} else {
-			v.draw_line(line, coff, 0)
+			v.draw_line(line, v.top_line_num + y, coff, 0)
 		}
 
 		coff += v.uibuf.Width
@@ -1174,6 +1199,38 @@ func (v *view) in_one_of_highlight_ranges(offset int) bool {
 		}
 	}
 	return false
+}
+
+func (v *view) tag(line, offset int) *view_tag {
+	for i := range v.tags {
+		t := &v.tags[i]
+		if t.includes(line, offset) {
+			return t
+		}
+	}
+	return &default_view_tag
+}
+
+func (v *view) make_cell(line, offset int, ch rune) termbox.Cell {
+	tag := v.tag(line, offset)
+	if tag != &default_view_tag {
+		return termbox.Cell{
+			Ch: ch,
+			Fg: tag.fg,
+			Bg: tag.bg,
+		}
+	}
+
+	cell := termbox.Cell{
+		Ch: ch,
+		Fg: tag.fg,
+		Bg: tag.bg,
+	}
+	if v.in_one_of_highlight_ranges(offset) {
+		cell.Fg = hl_fg
+		cell.Bg = hl_bg
+	}
+	return cell
 }
 
 //----------------------------------------------------------------------------
