@@ -13,18 +13,22 @@ import (
 
 type line_edit_mode struct {
 	stub_overlay_mode
-	godit     *godit
-	on_apply  func(buffer *buffer)
-	on_cancel func()
-	linebuf   *buffer
-	lineview  *view
-	prompt    []byte
-	prompt_w  int
+	godit         *godit
+	on_apply      func(buffer *buffer)
+	on_cancel     func()
+	key_filter    func(ev *termbox.Event) bool
+	post_key_hook func(buffer *buffer)
+	linebuf       *buffer
+	lineview      *view
+	prompt        []byte
+	prompt_w      int
 }
 
 type line_edit_mode_params struct {
 	on_apply        func(buffer *buffer)
 	on_cancel       func()
+	key_filter      func(ev *termbox.Event) bool
+	post_key_hook   func(buffer *buffer)
 	ac_decide       ac_decide_func
 	prompt          string
 	initial_content string
@@ -38,16 +42,22 @@ func (l *line_edit_mode) exit() {
 }
 
 func (l *line_edit_mode) on_key(ev *termbox.Event) {
+	if l.key_filter != nil && l.key_filter(ev) {
+		return
+	}
+
 	switch ev.Key {
 	case termbox.KeyEnter, termbox.KeyCtrlJ:
 		if l.lineview.ac != nil {
-			goto handle_view_key
+			l.lineview.on_key(ev)
+			break
 		}
 
 		if l.on_apply != nil {
 			l.on_apply(l.linebuf)
 		}
 		l.godit.set_overlay_mode(nil)
+		return // return early to avoid running post key hook
 	case termbox.KeyTab:
 		l.lineview.on_vcommand(vcommand_autocompl_init, 0)
 	case termbox.KeyArrowUp:
@@ -55,13 +65,12 @@ func (l *line_edit_mode) on_key(ev *termbox.Event) {
 	case termbox.KeyArrowDown:
 		l.lineview.on_vcommand(vcommand_autocompl_move_cursor_down, 0)
 	default:
-		goto handle_view_key
+		l.lineview.on_key(ev)
 	}
 
-	return
-
-handle_view_key:
-	l.lineview.on_key(ev)
+	if l.post_key_hook != nil {
+		l.post_key_hook(l.linebuf)
+	}
 }
 
 func (l *line_edit_mode) resize(ev *termbox.Event) {
@@ -125,6 +134,8 @@ func init_line_edit_mode(godit *godit, p line_edit_mode_params) *line_edit_mode 
 	l.godit = godit
 	l.on_apply = p.on_apply
 	l.on_cancel = p.on_cancel
+	l.key_filter = p.key_filter
+	l.post_key_hook = p.post_key_hook
 	l.linebuf, _ = new_buffer(strings.NewReader(p.initial_content))
 	l.lineview = new_view(godit, l.linebuf)
 	l.lineview.oneline = true          // enable one line mode

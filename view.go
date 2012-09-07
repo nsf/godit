@@ -63,7 +63,7 @@ type view_location struct {
 
 type byte_range struct {
 	begin int
-	end int
+	end   int
 }
 
 func (r byte_range) includes(offset int) bool {
@@ -78,12 +78,12 @@ const hl_bg = termbox.ColorBlue
 //----------------------------------------------------------------------------
 
 type view_tag struct {
-	begin_line int
+	begin_line   int
 	begin_offset int
-	end_line int
-	end_offset int
-	fg termbox.Attribute
-	bg termbox.Attribute
+	end_line     int
+	end_offset   int
+	fg           termbox.Attribute
+	bg           termbox.Attribute
 }
 
 func (t *view_tag) includes(line, offset int) bool {
@@ -326,9 +326,9 @@ func (v *view) draw_contents() {
 
 		if line == v.cursor.line {
 			// special case, cursor line
-			v.draw_line(line, v.top_line_num + y, coff, v.line_voffset)
+			v.draw_line(line, v.top_line_num+y, coff, v.line_voffset)
 		} else {
-			v.draw_line(line, v.top_line_num + y, coff, 0)
+			v.draw_line(line, v.top_line_num+y, coff, 0)
 		}
 
 		coff += v.uibuf.Width
@@ -1185,10 +1185,10 @@ func (v *view) find_highlight_ranges_for_line(data []byte) {
 
 		v.highlight_ranges = append(v.highlight_ranges, byte_range{
 			begin: offset + i,
-			end: offset + i + len(v.highlight_bytes),
+			end:   offset + i + len(v.highlight_bytes),
 		})
 		data = data[i+len(v.highlight_bytes):]
-		offset += i+len(v.highlight_bytes)
+		offset += i + len(v.highlight_bytes)
 	}
 }
 
