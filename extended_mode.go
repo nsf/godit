@@ -81,6 +81,16 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 		case 'b':
 			g.set_overlay_mode(init_line_edit_mode(g, g.switch_buffer_lemp()))
 			return
+		case '(':
+			g.set_status("Defining keyboard macro...")
+			g.recording = true
+			g.keymacros = g.keymacros[:0]
+		case ')':
+			g.stop_recording()
+		case 'e':
+			g.stop_recording()
+			g.set_overlay_mode(init_macro_repeat_mode(g))
+			return
 		default:
 			goto undefined
 		}

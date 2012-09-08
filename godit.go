@@ -16,6 +16,30 @@ const (
 	view_horizontal_threshold = 10
 )
 
+type key_event struct {
+	mod termbox.Modifier
+	_ [1]byte
+	key termbox.Key
+	ch rune
+}
+
+func create_key_event(ev *termbox.Event) key_event {
+	return key_event{
+		mod: ev.Mod,
+		key: ev.Key,
+		ch: ev.Ch,
+	}
+}
+
+func (k key_event) to_termbox_event() termbox.Event {
+	return termbox.Event{
+		Type: termbox.EventKey,
+		Mod: k.mod,
+		Key: k.key,
+		Ch: k.ch,
+	}
+}
+
 //----------------------------------------------------------------------------
 // godit
 //
@@ -33,6 +57,8 @@ type godit struct {
 	quitflag      bool
 	overlay       overlay_mode
 	termbox_event chan termbox.Event
+	keymacros     []key_event
+	recording     bool
 }
 
 func new_godit(filenames []string) *godit {
@@ -51,6 +77,7 @@ func new_godit(filenames []string) *godit {
 	}
 	g.views = new_view_tree_leaf(nil, new_view(g, g.buffers[0]))
 	g.active = g.views
+	g.keymacros = make([]key_event, 0, 50)
 	return g
 }
 
@@ -329,6 +356,9 @@ func (g *godit) consume_more_events() bool {
 func (g *godit) handle_event(ev *termbox.Event) bool {
 	switch ev.Type {
 	case termbox.EventKey:
+		if g.recording {
+			g.keymacros = append(g.keymacros, create_key_event(ev))
+		}
 		g.set_status("") // reset status on every key event
 		g.on_sys_key(ev)
 		if g.overlay != nil {
@@ -432,6 +462,29 @@ func (g *godit) goto_line_lemp() line_edit_mode_params {
 			}
 			v.on_vcommand(vcommand_move_cursor_to_line, rune(num))
 		},
+	}
+}
+
+func (g *godit) stop_recording() {
+	if !g.recording {
+		g.set_status("Not defining keyboard macro")
+		return
+	}
+
+	// clean up the current key combo: "C-x )"
+	g.recording = false
+	g.keymacros = g.keymacros[:len(g.keymacros)-2]
+	if len(g.keymacros) == 0 {
+		g.set_status("Ignore empty macro")
+	} else {
+		g.set_status("Keyboard macro defined")
+	}
+}
+
+func (g *godit) replay_macro() {
+	for _, keyev := range g.keymacros {
+		ev := keyev.to_termbox_event()
+		g.handle_event(&ev)
 	}
 }
 

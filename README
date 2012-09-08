@@ -38,6 +38,9 @@ Extended mode:
   3                         - Split active view horizontally
   o                         - Make a sibling view active
   b                         - Switch buffer in the active view
+  (                         - Start keyboard macro recording
+  )                         - Stop keyboard macro recording
+  e                         - Stop keyboard macro recording and execute it
 
 View operations mode:
   v                         - Split active view vertically
