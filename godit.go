@@ -76,6 +76,12 @@ func (g *godit) open_buffers_from_pattern(pattern string) {
 			panic(err)
 		}
 	}
+	if buf == nil {
+		buf, err = g.new_buffer_from_file(pattern)
+		if err != nil {
+			panic(err)
+		}
+	}
 	g.active.leaf.attach(buf)
 }
 
@@ -379,6 +385,10 @@ func (g *godit) open_buffer_lemp() line_edit_mode_params {
 
 		on_apply: func(buf *buffer) {
 			pattern := string(buf.contents())
+			if pattern == "" {
+				g.set_status("(Nothing to open)")
+				return
+			}
 			g.open_buffers_from_pattern(pattern)
 		},
 	}
