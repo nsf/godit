@@ -10,6 +10,22 @@ import (
 	"unicode"
 )
 
+func readdir_stat(dir string, f *os.File) ([]os.FileInfo, error) {
+	names, err := f.Readdirnames(-1)
+	if err != nil {
+		return nil, err
+	}
+
+	fis := make([]os.FileInfo, len(names))
+	for i, name := range names {
+		fis[i], err = os.Stat(filepath.Join(dir, name))
+		if err != nil {
+			return nil, err
+		}
+	}
+	return fis, nil
+}
+
 func index_first_non_space(s []byte) int {
 	for i := 0; i < len(s); i++ {
 		if s[i] != '\t' && s[i] != ' ' {
@@ -187,4 +203,38 @@ func substitute_home(path string) string {
 		panic("HOME is not set")
 	}
 	return filepath.Join(home, path[1:])
+}
+
+func substitute_symlinks(path string) string {
+	if path == "" {
+		return ""
+	}
+	after, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return path
+	}
+
+	if strings.HasSuffix(path, string(filepath.Separator)) {
+		return after + string(filepath.Separator)
+	}
+	return after
+}
+
+func is_file_hidden(path string) bool {
+	if path == "." || path == ".." {
+		return true
+	}
+
+	if len(path) > 1 {
+		if strings.HasPrefix(path, "./") {
+			return false
+		}
+		if strings.HasPrefix(path, "..") {
+			return false
+		}
+		if strings.HasPrefix(path, ".") {
+			return true
+		}
+	}
+	return false
 }

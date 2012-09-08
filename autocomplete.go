@@ -401,6 +401,7 @@ func filesystem_line_ac(view *view) ([]ac_proposal, int) {
 	var err error
 	path := string(view.buf.contents()[:view.cursor.boffset])
 	path = substitute_home(path)
+	path = substitute_symlinks(path)
 	dir, partfile := filepath.Split(path)
 	if dir == "" {
 		dirfd, err = os.Open(".")
@@ -410,28 +411,41 @@ func filesystem_line_ac(view *view) ([]ac_proposal, int) {
 	if err != nil {
 		return nil, 0
 	}
-	fis, err := dirfd.Readdir(-1)
+	fis, err := readdir_stat(dir, dirfd)
 	if err != nil {
 		// can we recover something from here?
 		return nil, 0
 	}
 	sort.Sort(filesystem_slice(fis))
 	proposals := make([]ac_proposal, 0, 20)
-	for _, fi := range fis {
-		name := fi.Name()
-		if strings.HasPrefix(name, ".") {
-			continue
+	match_files := func(ignorecase bool) {
+		if ignorecase {
+			partfile = strings.ToLower(partfile)
 		}
-		if strings.HasPrefix(name, partfile) {
-			suffix := ""
-			if fi.IsDir() {
-				suffix = "/"
+		for _, fi := range fis {
+			name := fi.Name()
+			if is_file_hidden(name) {
+				continue
 			}
-			proposals = append(proposals, ac_proposal{
-				display: []byte(dir + name + suffix),
-				content: []byte(dir + name + suffix),
-			})
+			tmpname := name
+			if ignorecase {
+				tmpname = strings.ToLower(tmpname)
+			}
+			if strings.HasPrefix(tmpname, partfile) {
+				suffix := ""
+				if fi.IsDir() {
+					suffix = string(filepath.Separator)
+				}
+				proposals = append(proposals, ac_proposal{
+					display: []byte(dir + name + suffix),
+					content: []byte(dir + name + suffix),
+				})
+			}
 		}
+	}
+	match_files(false)
+	if len(proposals) == 0 {
+		match_files(true)
 	}
 	return proposals, view.cursor_coffset
 }
