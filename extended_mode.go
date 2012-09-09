@@ -58,6 +58,10 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 
 		g.set_overlay_mode(init_line_edit_mode(g, g.save_as_buffer_lemp()))
 		return
+	case termbox.KeyCtrlSlash:
+		g.active.leaf.on_vcommand(vcommand_redo, 0)
+		g.set_overlay_mode(init_redo_mode(g))
+		return
 	default:
 		switch ev.Ch {
 		case 'w':

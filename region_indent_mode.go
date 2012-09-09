@@ -25,12 +25,12 @@ func init_region_indent_mode(godit *godit, dir int) region_indent_mode {
 	end.boffset = len(end.line.data)
 
 	v.set_tags(view_tag{
-		begin_line: beg.line_num,
+		begin_line:   beg.line_num,
 		begin_offset: beg.boffset,
-		end_line: end.line_num,
-		end_offset: end.boffset,
-		fg: termbox.ColorDefault,
-		bg: termbox.ColorBlue,
+		end_line:     end.line_num,
+		end_offset:   end.boffset,
+		fg:           termbox.ColorDefault,
+		bg:           termbox.ColorBlue,
 	})
 	if dir > 0 {
 		v.on_vcommand(vcommand_indent_region, 0)

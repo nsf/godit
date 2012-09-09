@@ -1146,8 +1146,6 @@ func (v *view) on_key(ev *termbox.Event) {
 		v.on_vcommand(vcommand_kill_line, 0)
 	case termbox.KeyPgup:
 		v.on_vcommand(vcommand_move_view_half_backward, 0)
-	case termbox.KeyCtrlR:
-		v.on_vcommand(vcommand_redo, 0)
 	case termbox.KeyTab:
 		v.on_vcommand(vcommand_insert_rune, '\t')
 	case termbox.KeyCtrlSpace:

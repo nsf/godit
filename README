@@ -32,6 +32,7 @@ Extended mode:
   C-s                       - Save file
   C-f                       - Load file
   C-w, w                    - Enter view operations mode
+  C-/                       - Redo and enter redo mode
   0                         - Kill active view
   1                         - Kill all views but active
   2                         - Split active view vertically
@@ -82,4 +83,8 @@ View keys:
 (De)indent mode:
   >                         - Indent
   <                         - Deindent
+  Any other key             - Dispatch key to default path and quit mode
+
+Redo mode:
+  C-/                       - Redo
   Any other key             - Dispatch key to default path and quit mode
