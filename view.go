@@ -1233,6 +1233,89 @@ func (v *view) make_cell(line, offset int, ch rune) termbox.Cell {
 	return cell
 }
 
+func (v *view) cleanup_trailing_whitespaces() {
+	cursor := cursor_location{
+		line: v.buf.first_line,
+		line_num: 1,
+		boffset: 0,
+	}
+
+	for cursor.line != nil {
+		len := len(cursor.line.data)
+		i := index_last_non_space(cursor.line.data)
+		if i == -1 && len > 0 {
+			// the whole string is whitespace
+			v.action_delete(cursor, len)
+		}
+		if i != -1 && i != len-1 {
+			// some whitespace at the end
+			cursor.boffset = i+1
+			v.action_delete(cursor, len-cursor.boffset)
+		}
+		cursor.line = cursor.line.next
+		cursor.line_num++
+		cursor.boffset = 0
+	}
+
+	// adjust cursor after changes possibly
+	cursor = v.cursor
+	if cursor.boffset > len(cursor.line.data) {
+		cursor.boffset = len(cursor.line.data)
+		v.move_cursor_to(cursor)
+	}
+}
+
+func (v *view) cleanup_trailing_newlines() {
+	cursor := cursor_location{
+		line: v.buf.last_line,
+		line_num: v.buf.lines_n,
+		boffset: 0,
+	}
+
+	for len(cursor.line.data) == 0 {
+		prev := cursor.line.prev
+		if prev == nil {
+			// beginning of the file, stop
+			break
+		}
+
+		if len(prev.data) > 0 {
+			// previous line is not empty, leave one empty line at
+			// the end (trailing EOL)
+			break
+		}
+
+		// adjust view cursor just in case
+		if v.cursor.line_num == cursor.line_num {
+			v.move_cursor_prev_line()
+		}
+
+		cursor.line = prev
+		cursor.line_num--
+		cursor.boffset = 0
+		v.action_delete(cursor, 1)
+	}
+}
+
+func (v *view) ensure_trailing_eol() {
+	cursor := cursor_location{
+		line: v.buf.last_line,
+		line_num: v.buf.lines_n,
+		boffset: len(v.buf.last_line.data),
+	}
+	if len(v.buf.last_line.data) > 0 {
+		v.action_insert(cursor, []byte{'\n'})
+	}
+}
+
+func (v *view) presave_cleanup() {
+	v.last_vcommand_class = vcommand_class_none
+	v.cleanup_trailing_whitespaces()
+	v.cleanup_trailing_newlines()
+	v.ensure_trailing_eol()
+	v.finalize_action_group()
+}
+
 //----------------------------------------------------------------------------
 // view commands
 //----------------------------------------------------------------------------

@@ -35,6 +35,15 @@ func index_first_non_space(s []byte) int {
 	return -1
 }
 
+func index_last_non_space(s []byte) int {
+	for i := len(s)-1; i >= 0; i-- {
+		if s[i] != '\t' && s[i] != ' ' {
+			return i
+		}
+	}
+	return -1
+}
+
 func abs_path(filename string) string {
 	path, err := filepath.Abs(filename)
 	if err != nil {

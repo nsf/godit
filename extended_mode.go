@@ -45,7 +45,7 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 		}
 
 		if b.path != "" {
-			v.finalize_action_group()
+			v.presave_cleanup()
 			err := b.save()
 			if err != nil {
 				g.set_status(err.Error())

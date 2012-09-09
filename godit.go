@@ -434,7 +434,7 @@ func (g *godit) save_as_buffer_lemp() line_edit_mode_params {
 		initial_content: b.name,
 
 		on_apply: func(linebuf *buffer) {
-			v.finalize_action_group()
+			v.presave_cleanup()
 			fullpath := abs_path(string(linebuf.contents()))
 			err := b.save_as(fullpath)
 			if err != nil {
