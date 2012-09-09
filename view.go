@@ -1097,6 +1097,10 @@ func (v *view) on_vcommand(cmd vcommand, arg rune) {
 		v.ac.move_cursor_up()
 	case vcommand_autocompl_move_cursor_down:
 		v.ac.move_cursor_down()
+	case vcommand_indent_region:
+		v.indent_region()
+	case vcommand_deindent_region:
+		v.deindent_region()
 	}
 
 	v.last_vcommand = cmd
@@ -1385,6 +1389,76 @@ func (v *view) copy_region() {
 	}
 }
 
+func (v *view) set_tags(tags ...view_tag) {
+	v.tags = v.tags[:0]
+	if len(tags) == 0 {
+		return
+	}
+	if cap(v.tags) < cap(tags) {
+		v.tags = tags
+		return
+	}
+	v.tags = v.tags[:len(tags)]
+	copy(v.tags, tags)
+}
+
+func (v *view) line_region() (beg, end cursor_location) {
+	beg = v.cursor
+	end = v.cursor
+	if v.buf.is_mark_set() {
+		end = v.buf.mark
+	}
+
+	if beg.line_num > end.line_num {
+		beg, end = end, beg
+	}
+	beg.boffset = 0
+	end.boffset = len(end.line.data)
+	return
+}
+
+func (v *view) indent_line(line cursor_location) {
+	line.boffset = 0
+	v.action_insert(line, []byte{'\t'})
+	if v.cursor.line == line.line {
+		cursor := v.cursor
+		cursor.boffset += 1
+		v.move_cursor_to(cursor)
+	}
+}
+
+func (v *view) deindent_line(line cursor_location) {
+	line.boffset = 0
+	if r, _ := line.rune_under(); r == '\t' {
+		v.action_delete(line, 1)
+	}
+	if v.cursor.line == line.line && v.cursor.boffset > 0 {
+		cursor := v.cursor
+		cursor.boffset -= 1
+		v.move_cursor_to(cursor)
+	}
+}
+
+func (v *view) indent_region() {
+	beg, end := v.line_region()
+	for beg.line != end.line {
+		v.indent_line(beg)
+		beg.line = beg.line.next
+		beg.line_num++
+	}
+	v.indent_line(end)
+}
+
+func (v *view) deindent_region() {
+	beg, end := v.line_region()
+	for beg.line != end.line {
+		v.deindent_line(beg)
+		beg.line = beg.line.next
+		beg.line_num++
+	}
+	v.deindent_line(end)
+}
+
 //----------------------------------------------------------------------------
 // view commands
 //----------------------------------------------------------------------------
@@ -1447,6 +1521,8 @@ const (
 
 	// misc commands
 	_vcommand_misc_beg
+	vcommand_indent_region
+	vcommand_deindent_region
 	vcommand_copy_region
 	vcommand_autocompl_init
 	vcommand_autocompl_move_cursor_up

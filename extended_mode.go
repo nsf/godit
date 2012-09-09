@@ -91,6 +91,12 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 			g.stop_recording()
 			g.set_overlay_mode(init_macro_repeat_mode(g))
 			return
+		case '>':
+			g.set_overlay_mode(init_region_indent_mode(g, 1))
+			return
+		case '<':
+			g.set_overlay_mode(init_region_indent_mode(g, -1))
+			return
 		default:
 			goto undefined
 		}

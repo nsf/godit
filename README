@@ -41,6 +41,8 @@ Extended mode:
   (                         - Start keyboard macro recording
   )                         - Stop keyboard macro recording
   e                         - Stop keyboard macro recording and execute it
+  >                         - Indent and enter (de)indent mode
+  <                         - Deindent and enter (de)indent mode
 
 View operations mode:
   v                         - Split active view vertically
@@ -76,3 +78,8 @@ View keys:
   M-n                       - Move cursor one menu entry down (autocompletion)
   M-p                       - Move cursor one menu entry up (autocompletion)
   C-/ (or C-_ or C-7)       - Undo
+
+(De)indent mode:
+  >                         - Indent
+  <                         - Deindent
+  Any other key             - Dispatch key to default path and quit mode
