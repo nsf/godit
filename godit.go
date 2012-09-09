@@ -18,25 +18,25 @@ const (
 
 type key_event struct {
 	mod termbox.Modifier
-	_ [1]byte
+	_   [1]byte
 	key termbox.Key
-	ch rune
+	ch  rune
 }
 
 func create_key_event(ev *termbox.Event) key_event {
 	return key_event{
 		mod: ev.Mod,
 		key: ev.Key,
-		ch: ev.Ch,
+		ch:  ev.Ch,
 	}
 }
 
 func (k key_event) to_termbox_event() termbox.Event {
 	return termbox.Event{
 		Type: termbox.EventKey,
-		Mod: k.mod,
-		Key: k.key,
-		Ch: k.ch,
+		Mod:  k.mod,
+		Key:  k.key,
+		Ch:   k.ch,
 	}
 }
 
@@ -59,6 +59,7 @@ type godit struct {
 	termbox_event chan termbox.Event
 	keymacros     []key_event
 	recording     bool
+	killbuffer    []byte
 }
 
 func new_godit(filenames []string) *godit {
@@ -75,7 +76,7 @@ func new_godit(filenames []string) *godit {
 		buf.name = "*new*"
 		g.buffers = append(g.buffers, buf)
 	}
-	g.views = new_view_tree_leaf(nil, new_view(g, g.buffers[0]))
+	g.views = new_view_tree_leaf(nil, new_view(g.view_context(), g.buffers[0]))
 	g.active = g.views
 	g.keymacros = make([]key_event, 0, 50)
 	return g
@@ -485,6 +486,15 @@ func (g *godit) replay_macro() {
 	for _, keyev := range g.keymacros {
 		ev := keyev.to_termbox_event()
 		g.handle_event(&ev)
+	}
+}
+
+func (g *godit) view_context() view_context {
+	return view_context{
+		set_status: func(f string, args ...interface{}) {
+			g.set_status(f, args...)
+		},
+		kill_buffer: &g.killbuffer,
 	}
 }
 

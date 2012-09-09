@@ -71,6 +71,8 @@ View keys:
   M-d                       - Kill word
   C-k                       - Kill line
   C-w                       - Kill region (between the cursor and the mark)
+  M-w                       - Copy region (between the cursor and the mark)
+  C-y                       - Yank (aka Paste) previously killed/copied text
   M-n                       - Move cursor one menu entry down (autocompletion)
   M-p                       - Move cursor one menu entry up (autocompletion)
   C-/ (or C-_ or C-7)       - Undo

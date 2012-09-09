@@ -105,11 +105,12 @@ var default_view_tag = view_tag{
 }
 
 //----------------------------------------------------------------------------
-// status reporter
+// view context
 //----------------------------------------------------------------------------
 
-type status_reporter interface {
-	set_status(format string, args ...interface{})
+type view_context struct {
+	set_status  func(format string, args ...interface{})
+	kill_buffer *[]byte
 }
 
 //----------------------------------------------------------------------------
@@ -130,23 +131,23 @@ func default_ac_decide(view *view) ac_func {
 
 type view struct {
 	view_location
-	status_reporter     status_reporter
-	tmpbuf              bytes.Buffer // temporary buffer for status bar text
-	buf                 *buffer      // currently displayed buffer
-	uibuf               tulib.Buffer
-	dirty               dirty_flag
-	oneline             bool
-	ac                  *autocompl
-	last_vcommand_class vcommand_class
-	ac_decide           ac_decide_func
-	highlight_bytes     []byte
-	highlight_ranges    []byte_range
-	tags                []view_tag
+	ctx              view_context
+	tmpbuf           bytes.Buffer // temporary buffer for status bar text
+	buf              *buffer      // currently displayed buffer
+	uibuf            tulib.Buffer
+	dirty            dirty_flag
+	oneline          bool
+	ac               *autocompl
+	last_vcommand    vcommand
+	ac_decide        ac_decide_func
+	highlight_bytes  []byte
+	highlight_ranges []byte_range
+	tags             []view_tag
 }
 
-func new_view(sr status_reporter, buf *buffer) *view {
+func new_view(ctx view_context, buf *buffer) *view {
 	v := new(view)
-	v.status_reporter = sr
+	v.ctx = ctx
 	v.uibuf = tulib.NewBuffer(1, 1)
 	v.attach(buf)
 	v.ac_decide = default_ac_decide
@@ -156,7 +157,7 @@ func new_view(sr status_reporter, buf *buffer) *view {
 }
 
 func (v *view) activate() {
-	v.last_vcommand_class = vcommand_class_none
+	v.last_vcommand = vcommand_none
 }
 
 func (v *view) deactivate() {
@@ -573,7 +574,7 @@ func (v *view) move_cursor_to(c cursor_location) {
 func (v *view) move_cursor_forward() {
 	c := v.cursor
 	if c.last_line() && c.eol() {
-		v.status_reporter.set_status("End of buffer")
+		v.ctx.set_status("End of buffer")
 		return
 	}
 
@@ -585,7 +586,7 @@ func (v *view) move_cursor_forward() {
 func (v *view) move_cursor_backward() {
 	c := v.cursor
 	if c.first_line() && c.bol() {
-		v.status_reporter.set_status("Beginning of buffer")
+		v.ctx.set_status("Beginning of buffer")
 		return
 	}
 
@@ -600,7 +601,7 @@ func (v *view) move_cursor_next_line() {
 		c = cursor_location{c.line.next, c.line_num + 1, -1}
 		v.move_cursor_to(c)
 	} else {
-		v.status_reporter.set_status("End of buffer")
+		v.ctx.set_status("End of buffer")
 	}
 }
 
@@ -611,7 +612,7 @@ func (v *view) move_cursor_prev_line() {
 		c = cursor_location{c.line.prev, c.line_num - 1, -1}
 		v.move_cursor_to(c)
 	} else {
-		v.status_reporter.set_status("Beginning of buffer")
+		v.ctx.set_status("Beginning of buffer")
 	}
 }
 
@@ -647,7 +648,7 @@ func (v *view) move_cursor_word_forward() {
 	ok := c.move_one_word_forward()
 	v.move_cursor_to(c)
 	if !ok {
-		v.status_reporter.set_status("End of buffer")
+		v.ctx.set_status("End of buffer")
 	}
 }
 
@@ -656,7 +657,7 @@ func (v *view) move_cursor_word_backward() {
 	ok := c.move_one_word_backward()
 	v.move_cursor_to(c)
 	if !ok {
-		v.status_reporter.set_status("Beginning of buffer")
+		v.ctx.set_status("Beginning of buffer")
 	}
 }
 
@@ -729,6 +730,7 @@ func (v *view) undo() {
 	b := v.buf
 	if b.history.prev == nil {
 		// we're at the sentinel, no more things to undo
+		v.ctx.set_status("No further undo information")
 		return
 	}
 
@@ -744,17 +746,20 @@ func (v *view) undo() {
 	v.move_cursor_to(b.history.before)
 	v.last_cursor_voffset = v.cursor_voffset
 	b.history = b.history.prev
+	v.ctx.set_status("Undo!")
 }
 
 func (v *view) redo() {
 	b := v.buf
 	if b.history.next == nil {
 		// open group, obviously, can't move forward
+		v.ctx.set_status("No further redo information")
 		return
 	}
 	if len(b.history.next.actions) == 0 {
 		// last finalized group, moving to the next group breaks the
 		// invariant and doesn't make sense (nothing to redo)
+		v.ctx.set_status("No further redo information")
 		return
 	}
 
@@ -766,6 +771,7 @@ func (v *view) redo() {
 	}
 	v.move_cursor_to(b.history.after)
 	v.last_cursor_voffset = v.cursor_voffset
+	v.ctx.set_status("Redo!")
 }
 
 func (v *view) action_insert(c cursor_location, data []byte) {
@@ -839,7 +845,7 @@ func (v *view) delete_rune_backward() {
 	if c.bol() {
 		if c.first_line() {
 			// beginning of the file
-			v.status_reporter.set_status("Beginning of buffer")
+			v.ctx.set_status("Beginning of buffer")
 			return
 		}
 		c.line = c.line.prev
@@ -866,7 +872,7 @@ func (v *view) delete_rune() {
 	if c.eol() {
 		if c.last_line() {
 			// end of the file
-			v.status_reporter.set_status("End of buffer")
+			v.ctx.set_status("End of buffer")
 			return
 		}
 		v.action_delete(c, 1)
@@ -885,10 +891,13 @@ func (v *view) kill_line() {
 	c := v.cursor
 	if !c.eol() {
 		// kill data from the cursor to the EOL
-		v.action_delete(c, len(c.line.data)-c.boffset)
+		len := len(c.line.data) - c.boffset
+		v.append_to_kill_buffer(c, len)
+		v.action_delete(c, len)
 		v.dirty = dirty_everything
 		return
 	}
+	v.append_to_kill_buffer(c, 1)
 	v.delete_rune()
 }
 
@@ -898,13 +907,14 @@ func (v *view) kill_word() {
 	c2.move_one_word_forward()
 	d := c1.distance(c2)
 	if d > 0 {
+		v.append_to_kill_buffer(c1, d)
 		v.action_delete(c1, d)
 	}
 }
 
 func (v *view) kill_region() {
 	if !v.buf.is_mark_set() {
-		v.status_reporter.set_status("The mark is not set now, so there is no region")
+		v.ctx.set_status("The mark is not set now, so there is no region")
 		return
 	}
 
@@ -916,16 +926,18 @@ func (v *view) kill_region() {
 		return
 	case d < 0:
 		d = -d
+		v.append_to_kill_buffer(c2, d)
 		v.action_delete(c2, d)
 		v.move_cursor_to(c2)
 	default:
+		v.append_to_kill_buffer(c1, d)
 		v.action_delete(c1, d)
 	}
 }
 
 func (v *view) set_mark() {
 	v.buf.mark = v.cursor
-	v.status_reporter.set_status("Mark set")
+	v.ctx.set_status("Mark set")
 }
 
 func (v *view) swap_cursor_and_mark() {
@@ -1021,9 +1033,7 @@ func (v *view) on_delete(a *action) {
 }
 
 func (v *view) on_vcommand(cmd vcommand, arg rune) {
-	class := cmd.class()
-	if class != v.last_vcommand_class {
-		v.last_vcommand_class = class
+	if cmd.class() != v.last_vcommand.class() {
 		v.finalize_action_group()
 	}
 
@@ -1060,6 +1070,8 @@ func (v *view) on_vcommand(cmd vcommand, arg rune) {
 		v.swap_cursor_and_mark()
 	case vcommand_insert_rune:
 		v.insert_rune(arg)
+	case vcommand_yank:
+		v.yank()
 	case vcommand_delete_rune_backward:
 		v.delete_rune_backward()
 	case vcommand_delete_rune:
@@ -1070,6 +1082,8 @@ func (v *view) on_vcommand(cmd vcommand, arg rune) {
 		v.kill_word()
 	case vcommand_kill_region:
 		v.kill_region()
+	case vcommand_copy_region:
+		v.copy_region()
 	case vcommand_undo:
 		v.undo()
 	case vcommand_redo:
@@ -1084,6 +1098,8 @@ func (v *view) on_vcommand(cmd vcommand, arg rune) {
 	case vcommand_autocompl_move_cursor_down:
 		v.ac.move_cursor_down()
 	}
+
+	v.last_vcommand = cmd
 }
 
 func (v *view) on_key(ev *termbox.Event) {
@@ -1136,6 +1152,8 @@ func (v *view) on_key(ev *termbox.Event) {
 		}
 	case termbox.KeyCtrlW:
 		v.on_vcommand(vcommand_kill_region, 0)
+	case termbox.KeyCtrlY:
+		v.on_vcommand(vcommand_yank, 0)
 	}
 
 	if ev.Mod&termbox.ModAlt != 0 {
@@ -1160,6 +1178,8 @@ func (v *view) on_key(ev *termbox.Event) {
 			if v.ac != nil {
 				v.on_vcommand(vcommand_autocompl_move_cursor_up, 0)
 			}
+		case 'w':
+			v.on_vcommand(vcommand_copy_region, 0)
 		}
 	} else if ev.Ch != 0 {
 		v.on_vcommand(vcommand_insert_rune, ev.Ch)
@@ -1235,9 +1255,9 @@ func (v *view) make_cell(line, offset int, ch rune) termbox.Cell {
 
 func (v *view) cleanup_trailing_whitespaces() {
 	cursor := cursor_location{
-		line: v.buf.first_line,
+		line:     v.buf.first_line,
 		line_num: 1,
-		boffset: 0,
+		boffset:  0,
 	}
 
 	for cursor.line != nil {
@@ -1249,7 +1269,7 @@ func (v *view) cleanup_trailing_whitespaces() {
 		}
 		if i != -1 && i != len-1 {
 			// some whitespace at the end
-			cursor.boffset = i+1
+			cursor.boffset = i + 1
 			v.action_delete(cursor, len-cursor.boffset)
 		}
 		cursor.line = cursor.line.next
@@ -1267,9 +1287,9 @@ func (v *view) cleanup_trailing_whitespaces() {
 
 func (v *view) cleanup_trailing_newlines() {
 	cursor := cursor_location{
-		line: v.buf.last_line,
+		line:     v.buf.last_line,
 		line_num: v.buf.lines_n,
-		boffset: 0,
+		boffset:  0,
 	}
 
 	for len(cursor.line.data) == 0 {
@@ -1299,9 +1319,9 @@ func (v *view) cleanup_trailing_newlines() {
 
 func (v *view) ensure_trailing_eol() {
 	cursor := cursor_location{
-		line: v.buf.last_line,
+		line:     v.buf.last_line,
 		line_num: v.buf.lines_n,
-		boffset: len(v.buf.last_line.data),
+		boffset:  len(v.buf.last_line.data),
 	}
 	if len(v.buf.last_line.data) > 0 {
 		v.action_insert(cursor, []byte{'\n'})
@@ -1309,11 +1329,60 @@ func (v *view) ensure_trailing_eol() {
 }
 
 func (v *view) presave_cleanup() {
-	v.last_vcommand_class = vcommand_class_none
+	v.last_vcommand = vcommand_none
 	v.cleanup_trailing_whitespaces()
 	v.cleanup_trailing_newlines()
 	v.ensure_trailing_eol()
 	v.finalize_action_group()
+}
+
+func (v *view) append_to_kill_buffer(cursor cursor_location, nbytes int) {
+	kb := *v.ctx.kill_buffer
+
+	switch v.last_vcommand {
+	case vcommand_kill_word, vcommand_kill_region, vcommand_kill_line:
+	default:
+		kb = kb[:0]
+	}
+
+	kb = append(kb, cursor.extract_bytes(nbytes)...)
+	*v.ctx.kill_buffer = kb
+}
+
+func (v *view) yank() {
+	buf := *v.ctx.kill_buffer
+	cursor := v.cursor
+
+	if len(buf) == 0 {
+		return
+	}
+	cbuf := clone_byte_slice(buf)
+	v.action_insert(cursor, cbuf)
+	for i, n := 0, len(buf); i < n; i++ {
+		cursor.move_one_rune_forward()
+		v.move_cursor_to(cursor)
+	}
+}
+
+// shameless copy & paste from kill_region
+func (v *view) copy_region() {
+	if !v.buf.is_mark_set() {
+		v.ctx.set_status("The mark is not set now, so there is no region")
+		return
+	}
+
+	c1 := v.cursor
+	c2 := v.buf.mark
+	d := c1.distance(c2)
+	switch {
+	case d == 0:
+		return
+	case d < 0:
+		d = -d
+		v.append_to_kill_buffer(c2, d)
+	default:
+		v.append_to_kill_buffer(c1, d)
+	}
 }
 
 //----------------------------------------------------------------------------
@@ -1334,8 +1403,10 @@ const (
 type vcommand int
 
 const (
+	vcommand_none vcommand = iota
+
 	// movement commands (finalize undo action group)
-	_vcommand_movement_beg vcommand = iota
+	_vcommand_movement_beg
 	vcommand_move_cursor_forward
 	vcommand_move_cursor_backward
 	vcommand_move_cursor_word_forward
@@ -1356,6 +1427,7 @@ const (
 	// insertion commands
 	_vcommand_insertion_beg
 	vcommand_insert_rune
+	vcommand_yank
 	_vcommand_insertion_end
 
 	// deletion commands
@@ -1375,6 +1447,7 @@ const (
 
 	// misc commands
 	_vcommand_misc_beg
+	vcommand_copy_region
 	vcommand_autocompl_init
 	vcommand_autocompl_move_cursor_up
 	vcommand_autocompl_move_cursor_down

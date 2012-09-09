@@ -36,7 +36,7 @@ func index_first_non_space(s []byte) int {
 }
 
 func index_last_non_space(s []byte) int {
-	for i := len(s)-1; i >= 0; i-- {
+	for i := len(s) - 1; i >= 0; i-- {
 		if s[i] != '\t' && s[i] != ' ' {
 			return i
 		}

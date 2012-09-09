@@ -32,7 +32,7 @@ func new_view_tree_leaf(parent *view_tree, v *view) *view_tree {
 
 func (v *view_tree) split_vertically() {
 	top := v.leaf
-	bottom := new_view(top.status_reporter, top.buf)
+	bottom := new_view(top.ctx, top.buf)
 	*v = view_tree{
 		parent: v.parent,
 		top:    new_view_tree_leaf(v, top),
@@ -43,7 +43,7 @@ func (v *view_tree) split_vertically() {
 
 func (v *view_tree) split_horizontally() {
 	left := v.leaf
-	right := new_view(left.status_reporter, left.buf)
+	right := new_view(left.ctx, left.buf)
 	*v = view_tree{
 		parent: v.parent,
 		left:   new_view_tree_leaf(v, left),
