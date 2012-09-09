@@ -75,6 +75,7 @@ func new_empty_buffer() *buffer {
 	l.prev = nil
 	b.first_line = l
 	b.last_line = l
+	b.lines_n = 1
 	b.loc = view_location{
 		top_line:     l,
 		top_line_num: 1,
