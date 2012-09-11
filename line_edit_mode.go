@@ -59,10 +59,6 @@ func (l *line_edit_mode) on_key(ev *termbox.Event) {
 		return // return early to avoid running post key hook
 	case termbox.KeyTab:
 		l.lineview.on_vcommand(vcommand_autocompl_init, 0)
-	case termbox.KeyArrowUp:
-		l.lineview.on_vcommand(vcommand_autocompl_move_cursor_up, 0)
-	case termbox.KeyArrowDown:
-		l.lineview.on_vcommand(vcommand_autocompl_move_cursor_down, 0)
 	default:
 		l.lineview.on_key(ev)
 	}
