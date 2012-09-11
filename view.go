@@ -78,19 +78,19 @@ const hl_bg = termbox.ColorBlue
 //----------------------------------------------------------------------------
 
 type view_tag struct {
-	begin_line   int
-	begin_offset int
-	end_line     int
-	end_offset   int
-	fg           termbox.Attribute
-	bg           termbox.Attribute
+	beg_line   int
+	beg_offset int
+	end_line   int
+	end_offset int
+	fg         termbox.Attribute
+	bg         termbox.Attribute
 }
 
 func (t *view_tag) includes(line, offset int) bool {
-	if line < t.begin_line || line > t.end_line {
+	if line < t.beg_line || line > t.end_line {
 		return false
 	}
-	if line == t.begin_line && offset < t.begin_offset {
+	if line == t.beg_line && offset < t.beg_offset {
 		return false
 	}
 	if line == t.end_line && offset >= t.end_offset {

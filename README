@@ -25,6 +25,7 @@ System keys:
 Global keys:
   C-x                       - Extended mode
   M-g                       - Go to line
+  C-s                       - I-search forward mode
 
 Extended mode:
   C-c                       - Quit from godit
@@ -88,3 +89,7 @@ View keys:
 Redo mode:
   C-/                       - Redo
   Any other key             - Dispatch key to default path and quit mode
+
+I-search forward mode:
+  Type text                 - Incrementally search for a word
+  C-s                       - Next, please

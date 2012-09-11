@@ -311,3 +311,18 @@ func (c *cursor_location) on_delete_adjust(a *action) {
 	}
 	c.boffset = a.cursor.boffset + n
 }
+
+func (c cursor_location) search_forward(word []byte) (cursor_location, bool) {
+	for c.line != nil {
+		i := bytes.Index(c.line.data[c.boffset:], word)
+		if i != -1 {
+			c.boffset += i
+			return c, true
+		}
+
+		c.line = c.line.next
+		c.line_num++
+		c.boffset = 0
+	}
+	return c, false
+}

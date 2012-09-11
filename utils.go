@@ -70,10 +70,13 @@ func insert_bytes(s []byte, offset int, data []byte) []byte {
 	return s
 }
 
-func copy_byte_slice(s []byte, b, e int) []byte {
-	c := make([]byte, e-b)
-	copy(c, s[b:e])
-	return c
+func copy_byte_slice(dst, src []byte) []byte {
+	if cap(dst) < len(src) {
+		dst = clone_byte_slice(src)
+	}
+	dst = dst[:len(src)]
+	copy(dst, src)
+	return dst
 }
 
 func clone_byte_slice(s []byte) []byte {

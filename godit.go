@@ -310,6 +310,8 @@ func (g *godit) on_key(ev *termbox.Event) {
 	switch ev.Key {
 	case termbox.KeyCtrlX:
 		g.set_overlay_mode(init_extended_mode(g))
+	case termbox.KeyCtrlS:
+		g.set_overlay_mode(init_line_edit_mode(g, incsearch_lemp(g)))
 	default:
 		if ev.Mod&termbox.ModAlt != 0 && g.on_alt_key(ev) {
 			break

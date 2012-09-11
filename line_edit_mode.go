@@ -43,7 +43,7 @@ func (l *line_edit_mode) exit() {
 
 func (l *line_edit_mode) on_key(ev *termbox.Event) {
 	if l.key_filter != nil && l.key_filter(ev) {
-		return
+		goto post_key_hook
 	}
 
 	switch ev.Key {
@@ -68,6 +68,7 @@ func (l *line_edit_mode) on_key(ev *termbox.Event) {
 		l.lineview.on_key(ev)
 	}
 
+post_key_hook:
 	if l.post_key_hook != nil {
 		l.post_key_hook(l.linebuf)
 	}
