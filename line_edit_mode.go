@@ -13,11 +13,8 @@ import (
 
 type line_edit_mode struct {
 	stub_overlay_mode
+	line_edit_mode_params
 	godit         *godit
-	on_apply      func(buffer *buffer)
-	on_cancel     func()
-	key_filter    func(ev *termbox.Event) bool
-	post_key_hook func(buffer *buffer)
 	linebuf       *buffer
 	lineview      *view
 	prompt        []byte
@@ -50,7 +47,9 @@ func (l *line_edit_mode) on_key(ev *termbox.Event) {
 	case termbox.KeyEnter, termbox.KeyCtrlJ:
 		if l.lineview.ac != nil {
 			l.lineview.on_key(ev)
-			break
+			if !l.init_autocompl {
+				break
+			}
 		}
 
 		if l.on_apply != nil {
@@ -133,10 +132,7 @@ func (l *line_edit_mode) cursor_position() (int, int) {
 func init_line_edit_mode(godit *godit, p line_edit_mode_params) *line_edit_mode {
 	l := new(line_edit_mode)
 	l.godit = godit
-	l.on_apply = p.on_apply
-	l.on_cancel = p.on_cancel
-	l.key_filter = p.key_filter
-	l.post_key_hook = p.post_key_hook
+	l.line_edit_mode_params = p
 	l.linebuf, _ = new_buffer(strings.NewReader(p.initial_content))
 	l.lineview = new_view(godit.view_context(), l.linebuf)
 	l.lineview.oneline = true          // enable one line mode
@@ -145,7 +141,7 @@ func init_line_edit_mode(godit *godit, p line_edit_mode_params) *line_edit_mode 
 	l.prompt_w = utf8.RuneCount(l.prompt)
 	l.lineview.resize(l.godit.uibuf.Width-l.prompt_w-1, 1)
 	l.lineview.on_vcommand(vcommand_move_cursor_end_of_line, 0)
-	if p.init_autocompl {
+	if l.init_autocompl {
 		l.lineview.on_vcommand(vcommand_autocompl_init, 0)
 	}
 	return l
