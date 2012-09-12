@@ -32,7 +32,7 @@ Extended mode:
   C-x                       - Swap cursor and mark locations
   C-s                       - Save file
   C-f                       - Load file
-  C-w, w                    - Enter view operations mode
+  C-w                       - Enter view operations mode
   C-/                       - Redo and enter redo mode
   0                         - Kill active view
   1                         - Kill all views but active

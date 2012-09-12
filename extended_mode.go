@@ -64,9 +64,6 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 		return
 	default:
 		switch ev.Ch {
-		case 'w':
-			g.set_overlay_mode(init_view_op_mode(g))
-			return
 		case '0':
 			g.kill_active_view()
 		case '1':
