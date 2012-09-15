@@ -824,7 +824,7 @@ func (v *view) insert_rune(r rune) {
 
 		if r == '\n' {
 			i := index_first_non_space(prev.data)
-			if i != -1 {
+			if i > 0 {
 				autoindent := clone_byte_slice(prev.data[:i])
 				v.action_insert(c, autoindent)
 				c.boffset += len(autoindent)

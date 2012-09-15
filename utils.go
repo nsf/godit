@@ -32,7 +32,7 @@ func index_first_non_space(s []byte) int {
 			return i
 		}
 	}
-	return -1
+	return len(s)
 }
 
 func index_last_non_space(s []byte) int {
