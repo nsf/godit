@@ -1343,6 +1343,7 @@ func (v *view) ensure_trailing_eol() {
 }
 
 func (v *view) presave_cleanup() {
+	v.finalize_action_group()
 	v.last_vcommand = vcommand_none
 	v.cleanup_trailing_whitespaces()
 	v.cleanup_trailing_newlines()
