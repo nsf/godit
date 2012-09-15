@@ -17,7 +17,13 @@ func TestLLRBTree(t *testing.T) {
 		x = strconv.AppendInt(x, int64(v), 10)
 		tree.insert_maybe(x)
 	}
+	tree.clear()
 	// try inserting twice
+	for _, v := range p {
+		var x []byte
+		x = strconv.AppendInt(x, int64(v), 10)
+		tree.insert_maybe(x)
+	}
 	for _, v := range p {
 		var x []byte
 		x = strconv.AppendInt(x, int64(v), 10)

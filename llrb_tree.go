@@ -9,6 +9,38 @@ import (
 type llrb_tree struct {
 	root *llrb_node
 	count int
+	free_nodes *llrb_node
+}
+
+func (t *llrb_tree) free_node(n *llrb_node) {
+	*n = llrb_node{left: t.free_nodes}
+	t.free_nodes = n
+}
+
+func (t *llrb_tree) alloc_node(value []byte) *llrb_node {
+	if t.free_nodes == nil {
+		return &llrb_node{value: value}
+	}
+
+	n := t.free_nodes
+	t.free_nodes = n.left
+	*n = llrb_node{value: value}
+	return n
+}
+
+func (t *llrb_tree) clear() {
+	t.clear_recursive(t.root)
+	t.root = nil
+	t.count = 0
+}
+
+func (t *llrb_tree) clear_recursive(n *llrb_node) {
+	if n == nil {
+		return
+	}
+	t.clear_recursive(n.left)
+	t.clear_recursive(n.right)
+	t.free_node(n)
 }
 
 func (t *llrb_tree) insert_maybe(value []byte) {
@@ -17,6 +49,34 @@ func (t *llrb_tree) insert_maybe(value []byte) {
 	if ok {
 		t.count++
 	}
+}
+
+func (t *llrb_tree) insert_maybe_recursive(n *llrb_node, value []byte) (*llrb_node, bool) {
+	if n == nil {
+		return t.alloc_node(value), true
+	}
+
+	var inserted bool
+	switch cmp := bytes.Compare(value, n.value); {
+	case cmp < 0:
+		n.left, inserted = t.insert_maybe_recursive(n.left, value)
+	case cmp > 0:
+		n.right, inserted = t.insert_maybe_recursive(n.right, value)
+	default:
+		// don't insert anything
+	}
+
+	if n.right.is_red() && !n.left.is_red() {
+		n = n.rotate_left()
+	}
+	if n.left.is_red() && n.left.left.is_red() {
+		n = n.rotate_right()
+	}
+	if n.left.is_red() && n.right.is_red() {
+		n.flip_colors()
+	}
+
+	return n, inserted
 }
 
 func (t *llrb_tree) contains(value []byte) bool {
