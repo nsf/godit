@@ -404,8 +404,10 @@ func (g *godit) switch_buffer_lemp() line_edit_mode_params {
 			for _, buf := range g.buffers {
 				if buf.name == bufname {
 					g.active.leaf.attach(buf)
+					return
 				}
 			}
+			g.set_status("(Buffer with this name doesn't exist)")
 		},
 	}
 }
