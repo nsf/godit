@@ -43,12 +43,17 @@ func (t *llrb_tree) clear_recursive(n *llrb_node) {
 	t.free_node(n)
 }
 
-func (t *llrb_tree) insert_maybe(value []byte) {
+func (t *llrb_tree) walk(cb func(value []byte)) {
+	t.root.walk(cb)
+}
+
+func (t *llrb_tree) insert_maybe(value []byte) bool {
 	var ok bool
 	t.root, ok = t.root.insert_maybe(value)
 	if ok {
 		t.count++
 	}
+	return ok
 }
 
 func (t *llrb_tree) insert_maybe_recursive(n *llrb_node, value []byte) (*llrb_node, bool) {
@@ -93,6 +98,15 @@ type llrb_node struct {
 	left *llrb_node
 	right *llrb_node
 	color bool
+}
+
+func (n *llrb_node) walk(cb func(value []byte)) {
+	if n == nil {
+		return
+	}
+	n.left.walk(cb)
+	cb(n.value)
+	n.right.walk(cb)
 }
 
 func (n *llrb_node) rotate_left() *llrb_node {

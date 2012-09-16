@@ -7,6 +7,7 @@ import (
 	"github.com/nsf/tulib"
 	"os"
 	"unicode/utf8"
+	"strings"
 )
 
 //----------------------------------------------------------------------------
@@ -111,6 +112,7 @@ var default_view_tag = view_tag{
 type view_context struct {
 	set_status  func(format string, args ...interface{})
 	kill_buffer *[]byte
+	buffers     *[]*buffer
 }
 
 //----------------------------------------------------------------------------
@@ -118,8 +120,10 @@ type view_context struct {
 //----------------------------------------------------------------------------
 
 func default_ac_decide(view *view) ac_func {
-	// stupid at the moment
-	return gocode_ac
+	if strings.HasSuffix(view.buf.path, ".go") {
+		return gocode_ac
+	}
+	return local_ac
 }
 
 //----------------------------------------------------------------------------
@@ -1468,6 +1472,61 @@ func (v *view) deindent_region() {
 		beg.line_num++
 	}
 	v.deindent_line(end)
+}
+
+func (v *view) collect_words(slice [][]byte, dups *llrb_tree, ignorecase bool) [][]byte {
+	append_word_full := func(prefix, word []byte) {
+		lword := word
+		lprefix := prefix
+		if ignorecase {
+			lword = bytes.ToLower(word)
+			lprefix = bytes.ToLower(prefix)
+		}
+
+		if !bytes.HasPrefix(lword, lprefix) {
+			return
+		}
+		ok := dups.insert_maybe(word)
+		if ok {
+			slice = append(slice, word)
+		}
+	}
+
+	prefix := v.cursor.word_under_cursor()
+	if prefix != nil {
+		dups.insert_maybe(prefix)
+	}
+
+	append_word := func(word []byte) {
+		append_word_full(prefix, word)
+	}
+
+	line := v.cursor.line
+	iter_words_backward(line.data[:v.cursor.boffset], append_word)
+	line = line.prev
+	for line != nil {
+		iter_words_backward(line.data, append_word)
+		line = line.prev
+	}
+
+	line = v.cursor.line
+	iter_words(line.data[v.cursor.boffset:], append_word)
+	line = line.next
+	for line != nil {
+		iter_words(line.data, append_word)
+		line = line.next
+	}
+	return slice
+}
+
+func (v *view) other_buffers(cb func(buf *buffer)) {
+	bufs := *v.ctx.buffers
+	for _, buf := range bufs {
+		if buf == v.buf {
+			continue
+		}
+		cb(buf)
+	}
 }
 
 //----------------------------------------------------------------------------

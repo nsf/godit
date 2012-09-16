@@ -66,6 +66,10 @@ type buffer struct {
 	// buffer name (displayed in the status line), must be unique,
 	// uniqueness is maintained by godit methods
 	name string
+
+	// cache for local buffer autocompletion
+	words_cache llrb_tree
+	words_cache_valid bool
 }
 
 func new_empty_buffer() *buffer {
@@ -242,6 +246,26 @@ func (b *buffer) reader() *buffer_reader {
 func (b *buffer) contents() []byte {
 	data, _ := ioutil.ReadAll(b.reader())
 	return data
+}
+
+func (b *buffer) refill_words_cache() {
+	b.words_cache.clear()
+	line := b.first_line
+	for line != nil {
+		iter_words(line.data, func(word []byte) {
+			b.words_cache.insert_maybe(word)
+		})
+		line = line.next
+	}
+}
+
+func (b *buffer) update_words_cache() {
+	if b.words_cache_valid {
+		return
+	}
+
+	b.refill_words_cache()
+	b.words_cache_valid = true
 }
 
 //----------------------------------------------------------------------------

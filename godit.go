@@ -302,6 +302,9 @@ func (g *godit) on_alt_key(ev *termbox.Event) bool {
 	case 'g':
 		g.set_overlay_mode(init_line_edit_mode(g, g.goto_line_lemp()))
 		return true
+	case '/':
+		g.set_overlay_mode(init_autocomplete_mode(g))
+		return true
 	}
 	return false
 }
@@ -499,6 +502,7 @@ func (g *godit) view_context() view_context {
 			g.set_status(f, args...)
 		},
 		kill_buffer: &g.killbuffer,
+		buffers: &g.buffers,
 	}
 }
 

@@ -167,6 +167,24 @@ func (c *cursor_location) move_end_of_line() {
 	c.boffset = len(c.line.data)
 }
 
+func (c *cursor_location) word_under_cursor() []byte {
+	end, beg := *c, *c
+	r, rlen := beg.rune_before()
+	if r == utf8.RuneError {
+		return nil
+	}
+
+	for is_word(r) && !beg.bol() {
+		beg.boffset -= rlen
+		r, rlen = beg.rune_before()
+	}
+
+	if beg.boffset == end.boffset {
+		return nil
+	}
+	return c.line.data[beg.boffset:end.boffset]
+}
+
 // returns true if the move was successful, false if EOF reached.
 func (c *cursor_location) move_one_word_forward() bool {
 	// move cursor forward until the first word rune is met

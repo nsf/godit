@@ -147,6 +147,9 @@ func (a *action) do(v *view, what action_type) {
 		}
 	}
 	v.dirty = dirty_everything
+
+	// any change to the buffer causes words cache invalidation
+	v.buf.words_cache_valid = false
 }
 
 func (a *action) last_line() *line {

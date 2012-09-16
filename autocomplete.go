@@ -307,6 +307,68 @@ func (ac *autocompl) finalize(view *view) {
 }
 
 //----------------------------------------------------------------------------
+// local buffer autocompletion
+//----------------------------------------------------------------------------
+
+func local_ac(view *view) ([]ac_proposal, int) {
+	var dups llrb_tree
+	var others llrb_tree
+	proposals := make([]ac_proposal, 0, 100)
+	prefix := view.cursor.word_under_cursor()
+
+	// update word caches
+	view.other_buffers(func(buf *buffer) {
+		buf.update_words_cache()
+	})
+
+	collect := func(ignorecase bool) {
+		words := view.collect_words([][]byte(nil), &dups, ignorecase)
+		for _, word := range words {
+			proposals = append(proposals, ac_proposal{
+				display: word,
+				content: word,
+			})
+		}
+
+		lprefix := prefix
+		if ignorecase {
+			lprefix = bytes.ToLower(prefix)
+		}
+		view.other_buffers(func(buf *buffer) {
+			buf.words_cache.walk(func(word []byte) {
+				lword := word
+				if ignorecase {
+					lword = bytes.ToLower(word)
+				}
+				if bytes.HasPrefix(lword, lprefix) {
+					ok := dups.insert_maybe(word)
+					if !ok {
+						return
+					}
+					others.insert_maybe(word)
+				}
+			})
+		})
+		others.walk(func(word []byte) {
+			proposals = append(proposals, ac_proposal{
+				display: word,
+				content: word,
+			})
+		})
+		others.clear()
+	}
+	collect(false)
+	if len(proposals) == 0 {
+		collect(true)
+	}
+
+	if prefix != nil {
+		return proposals, utf8.RuneCount(prefix)
+	}
+	return proposals, 0
+}
+
+//----------------------------------------------------------------------------
 // gocode autocompletion
 //----------------------------------------------------------------------------
 
