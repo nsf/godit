@@ -506,6 +506,15 @@ func (g *godit) view_context() view_context {
 	}
 }
 
+func (g *godit) has_unsaved_buffers() bool {
+	for _, buf := range g.buffers {
+		if !buf.synced_with_disk() {
+			return true
+		}
+	}
+	return false
+}
+
 func main() {
 	err := termbox.Init()
 	if err != nil {

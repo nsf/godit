@@ -27,7 +27,22 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 
 	switch ev.Key {
 	case termbox.KeyCtrlC:
-		g.quitflag = true
+		if g.has_unsaved_buffers() {
+			g.set_overlay_mode(init_key_press_mode(
+				g,
+				map[rune]func(){
+					'y': func() {
+						g.quitflag = true
+					},
+					'n': func() {},
+				},
+				0,
+				"Modified buffers exist; exit anyway? (y or n)",
+			))
+			return
+		} else {
+			g.quitflag = true
+		}
 	case termbox.KeyCtrlX:
 		v.on_vcommand(vcommand_swap_cursor_and_mark, 0)
 	case termbox.KeyCtrlW:
