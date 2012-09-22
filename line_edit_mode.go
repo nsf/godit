@@ -24,8 +24,6 @@ type line_edit_mode struct {
 type line_edit_mode_params struct {
 	on_apply        func(buffer *buffer)
 	on_cancel       func()
-	key_filter      func(ev *termbox.Event) bool
-	post_key_hook   func(buffer *buffer)
 	ac_decide       ac_decide_func
 	prompt          string
 	initial_content string
@@ -39,10 +37,6 @@ func (l *line_edit_mode) exit() {
 }
 
 func (l *line_edit_mode) on_key(ev *termbox.Event) {
-	if l.key_filter != nil && l.key_filter(ev) {
-		goto post_key_hook
-	}
-
 	switch ev.Key {
 	case termbox.KeyEnter, termbox.KeyCtrlJ:
 		if l.lineview.ac != nil {
@@ -56,16 +50,11 @@ func (l *line_edit_mode) on_key(ev *termbox.Event) {
 			l.on_apply(l.linebuf)
 		}
 		l.godit.set_overlay_mode(nil)
-		return // return early to avoid running post key hook
+		return
 	case termbox.KeyTab:
 		l.lineview.on_vcommand(vcommand_autocompl_init, 0)
 	default:
 		l.lineview.on_key(ev)
-	}
-
-post_key_hook:
-	if l.post_key_hook != nil {
-		l.post_key_hook(l.linebuf)
 	}
 }
 
