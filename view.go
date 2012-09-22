@@ -552,9 +552,12 @@ func (v *view) move_cursor_to(c cursor_location) {
 		v.cursor_coffset = co
 		v.cursor_voffset = vo
 	}
-	if c.line == v.cursor.line {
+
+	if c.boffset >= 0 {
 		v.last_cursor_voffset = v.cursor_voffset
-	} else {
+	}
+
+	if c.line != v.cursor.line {
 		if v.line_voffset != 0 {
 			v.dirty = dirty_everything
 		}
