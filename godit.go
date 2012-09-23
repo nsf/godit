@@ -60,6 +60,7 @@ type godit struct {
 	keymacros     []key_event
 	recording     bool
 	killbuffer    []byte
+	isearch_last_word []byte
 }
 
 func new_godit(filenames []string) *godit {
@@ -79,6 +80,7 @@ func new_godit(filenames []string) *godit {
 	g.views = new_view_tree_leaf(nil, new_view(g.view_context(), g.buffers[0]))
 	g.active = g.views
 	g.keymacros = make([]key_event, 0, 50)
+	g.isearch_last_word = make([]byte, 0, 32)
 	return g
 }
 

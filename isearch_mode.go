@@ -117,14 +117,15 @@ func (m *isearch_mode) search(next bool) {
 }
 
 func (m *isearch_mode) restore_previous_isearch_maybe() {
-	if len(isearch_last_word) == 0 {
+	lw := m.godit.isearch_last_word
+	if len(lw) == 0 {
 		return
 	}
 
 	v := m.lineview
 	c := v.cursor
-	v.action_insert(c, clone_byte_slice(isearch_last_word))
-	c.boffset += len(isearch_last_word)
+	v.action_insert(c, clone_byte_slice(lw))
+	c.boffset += len(lw)
 	v.move_cursor_to(c)
 	v.dirty = dirty_everything
 	v.finalize_action_group()
@@ -183,6 +184,6 @@ func (m *isearch_mode) on_key(ev *termbox.Event) {
 		return
 	}
 	m.last_word = copy_byte_slice(m.last_word, new_word)
-	isearch_last_word = copy_byte_slice(isearch_last_word, new_word)
+	m.godit.isearch_last_word = copy_byte_slice(m.godit.isearch_last_word, new_word)
 	m.search(false)
 }
