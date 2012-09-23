@@ -314,7 +314,9 @@ func (g *godit) on_key(ev *termbox.Event) {
 	case termbox.KeyCtrlX:
 		g.set_overlay_mode(init_extended_mode(g))
 	case termbox.KeyCtrlS:
-		g.set_overlay_mode(init_isearch_mode(g))
+		g.set_overlay_mode(init_isearch_mode(g, false))
+	case termbox.KeyCtrlR:
+		g.set_overlay_mode(init_isearch_mode(g, true))
 	default:
 		if ev.Mod&termbox.ModAlt != 0 && g.on_alt_key(ev) {
 			break

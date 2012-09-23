@@ -26,6 +26,7 @@ Global keys:
   C-x                       - Extended mode
   M-g                       - Go to line
   C-s                       - I-search forward mode
+  C-r                       - I-search backward mode
   M-/                       - Local autocompletion mode
 
 Extended mode:
@@ -93,7 +94,13 @@ Redo mode:
 
 I-search forward mode:
   Type text                 - Incrementally search for a word
-  C-s                       - Next, please
+  C-s                       - Next
+  C-r                       - Previous (and go to i-search backward mode)
+
+I-search backward mode:
+  Type text                 - Incrementally search for a word
+  C-r                       - Previous
+  C-s                       - Next (and go to i-search forward mode)
 
 Local autocompletion mode:
   M-/                       - Substitute next proposal

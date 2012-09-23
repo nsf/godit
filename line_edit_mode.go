@@ -85,10 +85,11 @@ func (l *line_edit_mode) draw() {
 	ui.DrawLabel(prompt_r, &lp, l.prompt)
 
 	// update line view
+	view.resize(ui.Width - l.prompt_w - 1, 1)
 	view.draw()
 	line_r := tulib.Rect{
 		l.prompt_w + 1, ui.Height - 1,
-		ui.Width - l.prompt_w - 1, 1,
+		view.uibuf.Width, view.uibuf.Height,
 	}
 	ui.Blit(line_r, 0, 0, &view.uibuf)
 	if view.ac == nil {

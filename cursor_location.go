@@ -344,3 +344,21 @@ func (c cursor_location) search_forward(word []byte) (cursor_location, bool) {
 	}
 	return c, false
 }
+
+func (c cursor_location) search_backward(word []byte) (cursor_location, bool) {
+	for {
+		i := bytes.LastIndex(c.line.data[:c.boffset], word)
+		if i != -1 {
+			c.boffset = i
+			return c, true
+		}
+
+		c.line = c.line.prev
+		if c.line == nil {
+			break
+		}
+		c.line_num--
+		c.boffset = len(c.line.data)
+	}
+	return c, false
+}
