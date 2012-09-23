@@ -12,59 +12,59 @@ import (
 )
 
 func iter_words(data []byte, cb func(word []byte)) {
-        for {
-                if len(data) == 0 {
-                        return
-                }
+	for {
+		if len(data) == 0 {
+			return
+		}
 
-                r, rlen := utf8.DecodeRune(data)
-                // skip non-word runes
-                for !is_word(r) && len(data) > 0 {
-                        data = data[rlen:]
-                        r, rlen = utf8.DecodeRune(data)
-                }
+		r, rlen := utf8.DecodeRune(data)
+		// skip non-word runes
+		for !is_word(r) && len(data) > 0 {
+			data = data[rlen:]
+			r, rlen = utf8.DecodeRune(data)
+		}
 
-                if len(data) == 0 {
-                        return
-                }
+		if len(data) == 0 {
+			return
+		}
 
-                // must be on a word rune
-                i := 0
-                for is_word(r) && i < len(data) {
-                        i += rlen
-                        r, rlen = utf8.DecodeRune(data[i:])
-                }
-                cb(data[:i])
-                data = data[i:]
-        }
+		// must be on a word rune
+		i := 0
+		for is_word(r) && i < len(data) {
+			i += rlen
+			r, rlen = utf8.DecodeRune(data[i:])
+		}
+		cb(data[:i])
+		data = data[i:]
+	}
 }
 
 func iter_words_backward(data []byte, cb func(word []byte)) {
-        for {
-                if len(data) == 0 {
-                        return
-                }
+	for {
+		if len(data) == 0 {
+			return
+		}
 
-                r, rlen := utf8.DecodeLastRune(data)
-                // skip non-word runes
-                for !is_word(r) && len(data) > 0 {
-                        data = data[:len(data)-rlen]
-                        r, rlen = utf8.DecodeLastRune(data)
-                }
+		r, rlen := utf8.DecodeLastRune(data)
+		// skip non-word runes
+		for !is_word(r) && len(data) > 0 {
+			data = data[:len(data)-rlen]
+			r, rlen = utf8.DecodeLastRune(data)
+		}
 
-                if len(data) == 0 {
-                        return
-                }
+		if len(data) == 0 {
+			return
+		}
 
-                // must be on a word rune
-                i := len(data)
-                for is_word(r) && i > 0 {
-                        i -= rlen
-                        r, rlen = utf8.DecodeLastRune(data[:i])
-                }
-                cb(data[i:])
-                data = data[:i]
-        }
+		// must be on a word rune
+		i := len(data)
+		for is_word(r) && i > 0 {
+			i -= rlen
+			r, rlen = utf8.DecodeLastRune(data[:i])
+		}
+		cb(data[i:])
+		data = data[:i]
+	}
 }
 
 func readdir_stat(dir string, f *os.File) ([]os.FileInfo, error) {

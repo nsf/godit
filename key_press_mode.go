@@ -6,10 +6,10 @@ import (
 
 type key_press_mode struct {
 	stub_overlay_mode
-	godit *godit
+	godit   *godit
 	actions map[rune]func()
-	def rune
-	prompt string
+	def     rune
+	prompt  string
 }
 
 func init_key_press_mode(godit *godit, actions map[rune]func(), def rune, prompt string) *key_press_mode {

@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/nsf/termbox-go"
 	"bytes"
+	"github.com/nsf/termbox-go"
 	"unicode/utf8"
 )
 
@@ -11,11 +11,11 @@ var isearch_last_word = make([]byte, 0, 32)
 type isearch_mode struct {
 	*line_edit_mode
 	last_word []byte
-	last_loc cursor_location
+	last_loc  cursor_location
 
 	backward bool
-	failing bool
-	wrapped bool
+	failing  bool
+	wrapped  bool
 
 	prompt_isearch []byte
 	prompt_failing []byte
@@ -35,7 +35,7 @@ func init_isearch_mode(g *godit, backward bool) *isearch_mode {
 		v.dirty = dirty_everything
 	}
 	m.line_edit_mode = init_line_edit_mode(g, line_edit_mode_params{
-		on_apply: func(*buffer) { cancel() },
+		on_apply:  func(*buffer) { cancel() },
 		on_cancel: cancel,
 		ac_decide: default_ac_decide,
 	})
@@ -67,7 +67,7 @@ func (m *isearch_mode) search(next bool) {
 
 	var (
 		cursor cursor_location
-		ok bool
+		ok     bool
 	)
 	if m.backward {
 		if !next {

@@ -421,7 +421,7 @@ func make_godit_buffer_ac(godit *godit) ac_func {
 		proposals := make([]ac_proposal, 0, 20)
 		for _, buf := range godit.buffers {
 			if strings.HasPrefix(buf.name, prefix) {
-				display := make([]byte, len(buf.name), len(buf.name) + 5)
+				display := make([]byte, len(buf.name), len(buf.name)+5)
 				content := display
 				copy(display, buf.name)
 				if !buf.synced_with_disk() {

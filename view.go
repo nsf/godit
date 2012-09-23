@@ -6,8 +6,8 @@ import (
 	"github.com/nsf/termbox-go"
 	"github.com/nsf/tulib"
 	"os"
-	"unicode/utf8"
 	"strings"
+	"unicode/utf8"
 )
 
 //----------------------------------------------------------------------------

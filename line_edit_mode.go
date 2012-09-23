@@ -14,11 +14,11 @@ import (
 type line_edit_mode struct {
 	stub_overlay_mode
 	line_edit_mode_params
-	godit         *godit
-	linebuf       *buffer
-	lineview      *view
-	prompt        []byte
-	prompt_w      int
+	godit    *godit
+	linebuf  *buffer
+	lineview *view
+	prompt   []byte
+	prompt_w int
 }
 
 type line_edit_mode_params struct {
@@ -85,7 +85,7 @@ func (l *line_edit_mode) draw() {
 	ui.DrawLabel(prompt_r, &lp, l.prompt)
 
 	// update line view
-	view.resize(ui.Width - l.prompt_w - 1, 1)
+	view.resize(ui.Width-l.prompt_w-1, 1)
 	view.draw()
 	line_r := tulib.Rect{
 		l.prompt_w + 1, ui.Height - 1,

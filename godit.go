@@ -48,18 +48,18 @@ func (k key_event) to_termbox_event() termbox.Event {
 //----------------------------------------------------------------------------
 
 type godit struct {
-	uibuf         tulib.Buffer
-	active        *view_tree // this one is always a leaf node
-	views         *view_tree // a root node
-	buffers       []*buffer
-	lastcmdclass  vcommand_class
-	statusbuf     bytes.Buffer
-	quitflag      bool
-	overlay       overlay_mode
-	termbox_event chan termbox.Event
-	keymacros     []key_event
-	recording     bool
-	killbuffer    []byte
+	uibuf             tulib.Buffer
+	active            *view_tree // this one is always a leaf node
+	views             *view_tree // a root node
+	buffers           []*buffer
+	lastcmdclass      vcommand_class
+	statusbuf         bytes.Buffer
+	quitflag          bool
+	overlay           overlay_mode
+	termbox_event     chan termbox.Event
+	keymacros         []key_event
+	recording         bool
+	killbuffer        []byte
 	isearch_last_word []byte
 }
 
@@ -506,7 +506,7 @@ func (g *godit) view_context() view_context {
 			g.set_status(f, args...)
 		},
 		kill_buffer: &g.killbuffer,
-		buffers: &g.buffers,
+		buffers:     &g.buffers,
 	}
 }
 

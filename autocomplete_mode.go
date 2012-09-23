@@ -6,11 +6,11 @@ import (
 
 type autocomplete_mode struct {
 	stub_overlay_mode
-	godit *godit
-	origin cursor_location
-	proposals []ac_proposal
+	godit      *godit
+	origin     cursor_location
+	proposals  []ac_proposal
 	prefix_len int
-	current int
+	current    int
 }
 
 func init_autocomplete_mode(godit *godit) *autocomplete_mode {
@@ -59,7 +59,7 @@ func (a *autocomplete_mode) substitute_next() {
 
 func (a *autocomplete_mode) on_key(ev *termbox.Event) {
 	g := a.godit
-	if ev.Mod & termbox.ModAlt != 0 && ev.Ch == '/' {
+	if ev.Mod&termbox.ModAlt != 0 && ev.Ch == '/' {
 		a.substitute_next()
 		return
 	}

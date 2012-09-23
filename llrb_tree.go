@@ -7,8 +7,8 @@ import (
 // LLRB tree with single key values as byte slices.
 // I use 2-3 tree algorithms for it. Only insertion is implemented (no delete).
 type llrb_tree struct {
-	root *llrb_node
-	count int
+	root       *llrb_node
+	count      int
 	free_nodes *llrb_node
 }
 
@@ -89,13 +89,13 @@ func (t *llrb_tree) contains(value []byte) bool {
 }
 
 const (
-	llrb_red = false
+	llrb_red   = false
 	llrb_black = true
 )
 
 type llrb_node struct {
 	value []byte
-	left *llrb_node
+	left  *llrb_node
 	right *llrb_node
 	color bool
 }

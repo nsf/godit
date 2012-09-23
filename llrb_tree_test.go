@@ -67,16 +67,16 @@ func TestLLRBTree(t *testing.T) {
 
 	// check if it's sorted correctly
 	/*
-	var printnodes func(n *llrb_node)
-	printnodes = func(n *llrb_node) {
-		if n == nil {
-			return
+		var printnodes func(n *llrb_node)
+		printnodes = func(n *llrb_node) {
+			if n == nil {
+				return
+			}
+			printnodes(n.left)
+			t.Logf("Node: %s\n", string(n.value))
+			printnodes(n.right)
 		}
-		printnodes(n.left)
-		t.Logf("Node: %s\n", string(n.value))
-		printnodes(n.right)
-	}
-	printnodes(tree.root)
+		printnodes(tree.root)
 	*/
 	// seems correct, the order is lexicographic
 }
