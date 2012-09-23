@@ -37,6 +37,7 @@ func init_isearch_mode(g *godit, backward bool) *isearch_mode {
 	m.line_edit_mode = init_line_edit_mode(g, line_edit_mode_params{
 		on_apply: func(*buffer) { cancel() },
 		on_cancel: cancel,
+		ac_decide: default_ac_decide,
 	})
 	m.set_prompt(m.prompt_isearch)
 	return m
