@@ -79,7 +79,7 @@ func (m *isearch_mode) search(next bool) {
 			cursor, ok = m.last_loc.search_backward(m.last_word)
 		}
 	} else {
-		if next {
+		if next && !m.wrapped {
 			m.last_loc.boffset += len(m.last_word)
 		}
 		cursor, ok = m.last_loc.search_forward(m.last_word)
