@@ -74,7 +74,7 @@ func new_godit(filenames []string) *godit {
 	}
 	if len(g.buffers) == 0 {
 		buf := new_empty_buffer()
-		buf.name = "*new*"
+		buf.name = g.buffer_name("*new*")
 		g.buffers = append(g.buffers, buf)
 	}
 	g.views = new_view_tree_leaf(nil, new_view(g.view_context(), g.buffers[0]))
@@ -82,6 +82,50 @@ func new_godit(filenames []string) *godit {
 	g.keymacros = make([]key_event, 0, 50)
 	g.isearch_last_word = make([]byte, 0, 32)
 	return g
+}
+
+func (g *godit) kill_buffer(buf *buffer) {
+	var replacement *buffer
+	views := make([]*view, len(buf.views))
+	copy(views, buf.views)
+
+	// find replacement buffer
+	if len(views) > 0 {
+		for _, gbuf := range g.buffers {
+			if gbuf == buf {
+				continue
+			}
+			replacement = gbuf
+			break
+		}
+		if replacement == nil {
+			replacement = new_empty_buffer()
+			replacement.name = g.buffer_name("*new*")
+			g.buffers = append(g.buffers, replacement)
+		}
+	}
+
+	// replace the buffer we're killing with replacement one for
+	// all the views
+	for _, v := range views {
+		v.attach(replacement)
+	}
+
+	// remove buffer from the list
+	bi := -1
+	for i, n := 0, len(g.buffers); i < n; i++ {
+		if g.buffers[i] == buf {
+			bi = i
+			break
+		}
+	}
+
+	if bi == -1 {
+		panic("removing non-existent buffer")
+	}
+
+	copy(g.buffers[bi:], g.buffers[bi+1:])
+	g.buffers = g.buffers[:len(g.buffers)-1]
 }
 
 func (g *godit) find_buffer_by_full_path(path string) *buffer {
@@ -115,6 +159,29 @@ func (g *godit) open_buffers_from_pattern(pattern string) {
 	g.active.leaf.attach(buf)
 }
 
+func (g *godit) buffer_name_exists(name string) bool {
+	for _, buf := range g.buffers {
+		if buf.name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *godit) buffer_name(name string) string {
+	if !g.buffer_name_exists(name) {
+		return name
+	}
+
+	for i := 2; i < 9999; i++ {
+		candidate := name + " <" + strconv.Itoa(i) + ">"
+		if !g.buffer_name_exists(candidate) {
+			return candidate
+		}
+	}
+	panic("too many buffers opened with the same name")
+}
+
 func (g *godit) new_buffer_from_file(filename string) (*buffer, error) {
 	fullpath := abs_path(filename)
 	buf := g.find_buffer_by_full_path(fullpath)
@@ -132,10 +199,10 @@ func (g *godit) new_buffer_from_file(filename string) (*buffer, error) {
 		if err != nil {
 			return nil, err
 		}
-		buf.path = fullpath
 	}
 
-	buf.name = filename
+	buf.path = fullpath
+	buf.name = g.buffer_name(filename)
 	g.buffers = append(g.buffers, buf)
 	return buf, nil
 }

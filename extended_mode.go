@@ -113,6 +113,8 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 		case '<':
 			g.set_overlay_mode(init_region_indent_mode(g, -1))
 			return
+		case 'k':
+			g.kill_buffer(b)
 		default:
 			goto undefined
 		}

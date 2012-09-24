@@ -47,6 +47,7 @@ Extended mode:
   e                         - Stop keyboard macro recording and execute it
   >                         - Indent and enter (de)indent mode
   <                         - Deindent and enter (de)indent mode
+  k                         - Kill buffer in the active view
 
 View operations mode:
   v                         - Split active view vertically
