@@ -466,6 +466,32 @@ func (g *godit) set_overlay_mode(m overlay_mode) {
 	g.overlay = m
 }
 
+// used by extended mode only
+func (g *godit) save_active_buffer(raw bool) {
+	v := g.active.leaf
+	b := v.buf
+
+	if b.synced_with_disk() {
+		g.set_status("(No changes need to be saved)")
+		g.set_overlay_mode(nil)
+		return
+	}
+
+	if b.path != "" {
+		v.presave_cleanup(raw)
+		err := b.save()
+		if err != nil {
+			g.set_status(err.Error())
+		} else {
+			g.set_status("Wrote %s", b.path)
+		}
+		g.set_overlay_mode(nil)
+		return
+	}
+
+	g.set_overlay_mode(init_line_edit_mode(g, g.save_as_buffer_lemp(raw)))
+}
+
 // "lemp" stands for "line edit mode params"
 func (g *godit) switch_buffer_lemp() line_edit_mode_params {
 	return line_edit_mode_params{
@@ -504,7 +530,7 @@ func (g *godit) open_buffer_lemp() line_edit_mode_params {
 }
 
 // "lemp" stands for "line edit mode params"
-func (g *godit) save_as_buffer_lemp() line_edit_mode_params {
+func (g *godit) save_as_buffer_lemp(raw bool) line_edit_mode_params {
 	v := g.active.leaf
 	b := v.buf
 	return line_edit_mode_params{
@@ -513,7 +539,7 @@ func (g *godit) save_as_buffer_lemp() line_edit_mode_params {
 		initial_content: b.name,
 
 		on_apply: func(linebuf *buffer) {
-			v.presave_cleanup()
+			v.presave_cleanup(raw)
 			fullpath := abs_path(string(linebuf.contents()))
 			err := b.save_as(fullpath)
 			if err != nil {

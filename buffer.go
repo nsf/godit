@@ -232,6 +232,9 @@ func (b *buffer) save_as(filename string) error {
 	}
 
 	b.on_disk = b.history
+	for _, v := range b.views {
+		v.dirty |= dirty_status
+	}
 	return nil
 }
 

@@ -33,6 +33,9 @@ Extended mode:
   C-c                       - Quit from godit
   C-x                       - Swap cursor and mark locations
   C-s                       - Save file
+  S                         - Save file (raw)
+  M-s                       - Save file as
+  M-S                       - Save file as (raw)
   C-f                       - Load file
   C-w                       - Enter view operations mode
   C-/                       - Redo and enter redo mode

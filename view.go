@@ -1349,13 +1349,15 @@ func (v *view) ensure_trailing_eol() {
 	}
 }
 
-func (v *view) presave_cleanup() {
+func (v *view) presave_cleanup(raw bool) {
 	v.finalize_action_group()
 	v.last_vcommand = vcommand_none
-	v.cleanup_trailing_whitespaces()
-	v.cleanup_trailing_newlines()
-	v.ensure_trailing_eol()
-	v.finalize_action_group()
+	if !raw {
+		v.cleanup_trailing_whitespaces()
+		v.cleanup_trailing_newlines()
+		v.ensure_trailing_eol()
+		v.finalize_action_group()
+	}
 }
 
 func (v *view) append_to_kill_buffer(cursor cursor_location, nbytes int) {

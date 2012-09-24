@@ -54,24 +54,7 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 		g.set_overlay_mode(init_line_edit_mode(g, g.open_buffer_lemp()))
 		return
 	case termbox.KeyCtrlS:
-		if b.synced_with_disk() {
-			g.set_status("(No changes need to be saved)")
-			break
-		}
-
-		if b.path != "" {
-			v.presave_cleanup()
-			err := b.save()
-			if err != nil {
-				g.set_status(err.Error())
-			} else {
-				v.dirty |= dirty_status
-				g.set_status("Wrote %s", b.path)
-			}
-			break
-		}
-
-		g.set_overlay_mode(init_line_edit_mode(g, g.save_as_buffer_lemp()))
+		g.save_active_buffer(false)
 		return
 	case termbox.KeyCtrlSlash:
 		g.active.leaf.on_vcommand(vcommand_redo, 0)
@@ -115,6 +98,20 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 			return
 		case 'k':
 			g.kill_buffer(b)
+		case 'S':
+			if ev.Mod&termbox.ModAlt != 0 {
+				g.set_overlay_mode(init_line_edit_mode(g,
+					g.save_as_buffer_lemp(true)))
+				return
+			}
+			g.save_active_buffer(true)
+			return
+		case 's':
+			if ev.Mod&termbox.ModAlt != 0 {
+				g.set_overlay_mode(init_line_edit_mode(g,
+					g.save_as_buffer_lemp(false)))
+				return
+			}
 		default:
 			goto undefined
 		}
