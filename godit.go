@@ -295,6 +295,7 @@ func (g *godit) draw() {
 	// draw everything
 	g.views.draw()
 	g.composite_recursively(g.views)
+	g.fix_edges(g.views)
 	g.draw_status()
 
 	// draw overlay if any
@@ -344,9 +345,63 @@ func (g *godit) composite_recursively(v *view_tree) {
 			Bg: termbox.AttrReverse,
 			Ch: '│',
 		})
+		g.uibuf.Set(splitter.X, splitter.Y+splitter.Height-1,
+			termbox.Cell{
+				Fg: termbox.AttrReverse,
+				Bg: termbox.AttrReverse,
+				Ch: '┴',
+			})
 	} else {
 		g.composite_recursively(v.top)
 		g.composite_recursively(v.bottom)
+	}
+}
+
+func (g *godit) fix_edges(v *view_tree) {
+	var x, y int
+	var cell *termbox.Cell
+	if v.leaf != nil {
+		y = v.Y + v.Height - 1
+		x = v.X - 1
+		cell = g.uibuf.Get(x, y)
+		if cell != nil {
+			switch cell.Ch {
+			case '│':
+				cell.Ch = '├'
+			case '┤':
+				cell.Ch = '┼'
+			}
+		}
+		x = v.X + v.Width
+		cell = g.uibuf.Get(x, y)
+		if cell != nil {
+			switch cell.Ch {
+			case '│':
+				cell.Ch = '┤'
+			case '├':
+				cell.Ch = '┼'
+			}
+		}
+		return
+	}
+
+	if v.left != nil {
+		x = v.right.X - 1
+		y = v.right.Y - 1
+		cell = g.uibuf.Get(x, y)
+		if cell != nil {
+			switch cell.Ch {
+			case '─':
+				cell.Ch = '┬'
+			case '┴':
+				cell.Ch = '┼'
+			}
+		}
+		g.fix_edges(v.left)
+		g.fix_edges(v.right)
+	} else {
+		g.fix_edges(v.top)
+		g.fix_edges(v.bottom)
 	}
 }
 
