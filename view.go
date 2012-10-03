@@ -272,7 +272,8 @@ func (v *view) draw_line(line *line, line_num, coff, line_voffset int) {
 		}
 
 		r, rlen := utf8.DecodeRune(data)
-		if r == '\t' {
+		switch {
+		case r == '\t':
 			// fill with spaces to the next tabstop
 			for ; x < tabstop; x++ {
 				rx := x - line_voffset
@@ -285,7 +286,29 @@ func (v *view) draw_line(line *line, line_num, coff, line_voffset int) {
 						line_num, bx, ' ')
 				}
 			}
-		} else {
+		case r < 32:
+			// invisible chars like ^R or ^@
+			if rx >= 0 {
+				v.uibuf.Cells[coff+rx] = termbox.Cell{
+					Ch: '^',
+					Fg: termbox.ColorRed,
+					Bg: termbox.ColorDefault,
+				}
+			}
+			x++
+			rx = x - line_voffset
+			if rx >= v.uibuf.Width {
+				break
+			}
+			if rx >= 0 {
+				v.uibuf.Cells[coff+rx] = termbox.Cell{
+					Ch: invisible_rune_table[r],
+					Fg: termbox.ColorRed,
+					Bg: termbox.ColorDefault,
+				}
+			}
+			x++
+		default:
 			if rx >= 0 {
 				v.uibuf.Cells[coff+rx] = v.make_cell(
 					line_num, bx, r)

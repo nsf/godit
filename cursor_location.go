@@ -69,11 +69,7 @@ func (c *cursor_location) voffset_coffset() (vo, co int) {
 		r, rlen := utf8.DecodeRune(data)
 		data = data[rlen:]
 		co += 1
-		if r == '\t' {
-			vo += tabstop_length - vo%tabstop_length
-		} else {
-			vo += 1
-		}
+		vo += rune_advance_len(r, vo)
 	}
 	return
 }
@@ -84,11 +80,7 @@ func (c *cursor_location) voffset() (vo int) {
 	for len(data) > 0 {
 		r, rlen := utf8.DecodeRune(data)
 		data = data[rlen:]
-		if r == '\t' {
-			vo += tabstop_length - vo%tabstop_length
-		} else {
-			vo += 1
-		}
+		vo += rune_advance_len(r, vo)
 	}
 	return
 }

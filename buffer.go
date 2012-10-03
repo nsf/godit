@@ -26,13 +26,7 @@ func (l *line) find_closest_offsets(voffset int) (bo, co, vo int) {
 		var vodif int
 		r, rlen := utf8.DecodeRune(data)
 		data = data[rlen:]
-
-		if r == '\t' {
-			vodif = tabstop_length - vo%tabstop_length
-		} else {
-			vodif = 1
-		}
-
+		vodif = rune_advance_len(r, vo)
 		if vo+vodif > voffset {
 			return
 		}
