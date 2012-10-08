@@ -1210,14 +1210,6 @@ func (v *view) on_key(ev *termbox.Event) {
 			v.on_vcommand(vcommand_move_cursor_word_backward, 0)
 		case 'd':
 			v.on_vcommand(vcommand_kill_word, 0)
-		case 'n':
-			if v.ac != nil {
-				v.on_vcommand(vcommand_autocompl_move_cursor_down, 0)
-			}
-		case 'p':
-			if v.ac != nil {
-				v.on_vcommand(vcommand_autocompl_move_cursor_up, 0)
-			}
 		case 'w':
 			v.on_vcommand(vcommand_copy_region, 0)
 		}
