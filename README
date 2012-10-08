@@ -30,7 +30,8 @@ Global keys:
   M-/                       - Local autocompletion mode
 
 Extended mode:
-  C-c                       - Quit from godit
+  C-c                       - Quit from godit (cancel autocompletion)
+  C-a                       - Invoke autocompletion
   C-x                       - Swap cursor and mark locations
   C-s                       - Save file
   S                         - Save file (raw)

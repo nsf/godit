@@ -413,6 +413,8 @@ func (g *godit) cursor_position() (int, int) {
 func (g *godit) on_sys_key(ev *termbox.Event) {
 	switch ev.Key {
 	case termbox.KeyCtrlG:
+		v := g.active.leaf
+		v.ac = nil
 		g.set_overlay_mode(nil)
 		g.set_status("Quit")
 	case termbox.KeyF1:
@@ -434,6 +436,7 @@ func (g *godit) on_alt_key(ev *termbox.Event) bool {
 }
 
 func (g *godit) on_key(ev *termbox.Event) {
+	v := g.active.leaf
 	switch ev.Key {
 	case termbox.KeyCtrlX:
 		g.set_overlay_mode(init_extended_mode(g))
@@ -445,7 +448,7 @@ func (g *godit) on_key(ev *termbox.Event) {
 		if ev.Mod&termbox.ModAlt != 0 && g.on_alt_key(ev) {
 			break
 		}
-		g.active.leaf.on_key(ev)
+		v.on_key(ev)
 	}
 }
 

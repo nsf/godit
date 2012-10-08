@@ -1142,21 +1142,17 @@ func (v *view) on_key(ev *termbox.Event) {
 		v.on_vcommand(vcommand_move_cursor_forward, 0)
 	case termbox.KeyCtrlB, termbox.KeyArrowLeft:
 		v.on_vcommand(vcommand_move_cursor_backward, 0)
-	case termbox.KeyArrowDown:
+	case termbox.KeyCtrlN, termbox.KeyArrowDown:
 		if v.ac != nil {
 			v.on_vcommand(vcommand_autocompl_move_cursor_down, 0)
 			break
 		}
-		fallthrough
-	case termbox.KeyCtrlN:
 		v.on_vcommand(vcommand_move_cursor_next_line, 0)
-	case termbox.KeyArrowUp:
+	case termbox.KeyCtrlP, termbox.KeyArrowUp:
 		if v.ac != nil {
 			v.on_vcommand(vcommand_autocompl_move_cursor_up, 0)
 			break
 		}
-		fallthrough
-	case termbox.KeyCtrlP:
 		v.on_vcommand(vcommand_move_cursor_prev_line, 0)
 	case termbox.KeyCtrlE, termbox.KeyEnd:
 		v.on_vcommand(vcommand_move_cursor_end_of_line, 0)
