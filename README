@@ -1,112 +1,105 @@
-A very religious text editor. In design and early development stage.
 
-So, why do I call it religious, because it's very religious about many
-customizations you usually see in other text editors. There is a strong believe
-of the "one true way". But keep in mind that I'm not trying to enforce anyone
-into this, it's my way and editor is basically written for myself. Incomplete
-list would be:
+ --== Godit - a very religious text editor ==--
 
- - '\n' is the only way to end the line
- - '\t' has width of 8 symbols
- - indentation is always about tab characters
- - syntax highlighting is a useless feature
- - all text files are utf-8
+I call it religious, because there is a strong faith in the "one true way"
+of doing things. By that I mean things like: "the tab size is always an
+equivalent to 8 spaces/characters" or "each line ends with '\n' symbol and
+someone should end this '\r\n' madness" or "text files are always utf-8
+encoded". Most editor provides customizable options for these things, but
+godit takes a different approach in that area and has no settings at all. So,
+that concludes the ideology behind godit.
+
+If you're interested in what godit feels like, it would be fair to say that it
+is an emacsish lightweight text editor. The godit uses many of the emacs key
+bindings and operates using a notion of "micromodes". It's easier to explain
+what a micromode is by a simple example. Let's take the keyboard macros feature
+from both emacs and godit. You can start recoding a macro using `C-x (` key
+combination and then when you're ready to start repeating it, you do the
+following: `C-x e (e...)`. Not only `C-x e` ends the recording of a macro, it
+executes the macro once and enters a micromode, where typing `e` again, will
+repeat that action. But as soon as some other key was pressed you quit this
+micromode and everything is back to normal again. The idea of micromode is used
+in godit a lot.
 
 
-I've recently added buffer saving feature, so it is kind of usable now, but use
-at your own risk. I strongly suggest you to do that only on files under version
-control systems.
+ --== List of keybindings ==--
 
-Here's an incomplete hotkeys list:
+Basic things:
+  C-g              - Universal cancel button
+  C-x C-c          - Quit from the godit
+  C-x C-s          - Save file [prompt maybe]
+  C-x S            - Save file (raw) [prompt maybe]
+  C-x M-s          - Save file as [prompt]
+  C-x M-S          - Save file as (raw) [prompt]
+  C-x C-f          - Open file
+  M-g              - Go to line [prompt]
+  C-/              - Undo
+  C-x C-/ (C-/...) - Redo
 
-System keys:
-  C-g                       - Universal cancel button
-
-Global keys:
-  C-x                       - Extended mode
-  M-g                       - Go to line
-  C-s                       - I-search forward mode
-  C-r                       - I-search backward mode
-  M-/                       - Local autocompletion mode
-
-Extended mode:
-  C-c                       - Quit from godit (cancel autocompletion)
-  C-a                       - Invoke autocompletion
-  C-x                       - Swap cursor and mark locations
-  C-s                       - Save file
-  S                         - Save file (raw)
-  M-s                       - Save file as
-  M-S                       - Save file as (raw)
-  C-f                       - Load file
-  C-w                       - Enter view operations mode
-  C-/                       - Redo and enter redo mode
-  0                         - Kill active view
-  1                         - Kill all views but active
-  2                         - Split active view vertically
-  3                         - Split active view horizontally
-  o                         - Make a sibling view active
-  b                         - Switch buffer in the active view
-  (                         - Start keyboard macro recording
-  )                         - Stop keyboard macro recording
-  e                         - Stop keyboard macro recording and execute it
-  >                         - Indent and enter (de)indent mode
-  <                         - Deindent and enter (de)indent mode
-  k                         - Kill buffer in the active view
+View/buffer operations:
+  C-x C-w          - View operations mode
+  C-x 0            - Kill active view
+  C-x 1            - Kill all views but active
+  C-x 2            - Split active view vertically
+  C-x 3            - Split active view horizontally
+  C-x o            - Make a sibling view active
+  C-x b            - Switch buffer in the active view [prompt]
+  C-x k            - Kill buffer in the active view
 
 View operations mode:
-  v                         - Split active view vertically
-  h                         - Split active view horizontally
-  k                         - Kill active view
-  C-f, <right>              - Expand/shrink active view to the right
-  C-b, <left>               - Expand/shrink active view to the left
-  C-n, <down>               - Expand/shrink active view to the bottom
-  C-p, <up>                 - Expand/shrink active view to the top
-  1, 2, 3, 4, 5, 6, 7, ...  - Select view
+  v                - Split active view vertically
+  h                - Split active view horizontally
+  C-f, <right>     - Expand/shrink active view to the right
+  C-b, <left>      - Expand/shrink active view to the left
+  C-n, <down>      - Expand/shrink active view to the bottom
+  C-p, <up>        - Expand/shrink active view to the top
+  1, 2, 3, 4, ...  - Select view
 
-View keys:
-  C-f, <right>              - Move cursor forward
-  M-f                       - Move cursor one word forward
-  C-b, <left>               - Move cursor backward
-  M-b                       - Move cursor one word backward
-  C-n, <down>               - Move cursor to the next line
-  C-p, <up>                 - Move cursor to the previous line
-  C-e, <end>                - Move cursor to the end of line
-  C-a, <home>               - Move cursor to the beginning of the line
-  C-v, <pgdn>               - Move view forward (half of the screen)
-  M-v, <pgup>               - Move view backward (half of the screen)
-  C-j                       - Insert a newline character and autoindent
-  <enter> (or C-m)          - Insert a newline character
-  <backspace>, <backspace2> - Delete one character backwards
-  C-d, <delete>             - Delete one character in-place
-  C-<space>                 - Set mark
-  M-d                       - Kill word
-  C-k                       - Kill line
-  C-w                       - Kill region (between the cursor and the mark)
-  M-w                       - Copy region (between the cursor and the mark)
-  C-y                       - Yank (aka Paste) previously killed/copied text
-  M-n                       - Move cursor one menu entry down (autocompletion)
-  M-p                       - Move cursor one menu entry up (autocompletion)
-  C-/ (or C-_ or C-7)       - Undo
+Cursor/view movement and text editing:
+  C-f, <right>     - Move cursor one character forward
+  M-f              - Move cursor one word forward
+  C-b, <left>      - Move cursor one character backward
+  M-b              - Move cursor one word backward
+  C-n, <down>      - Move cursor to the next line
+  C-p, <up>        - Move cursor to the previous line
+  C-e, <end>       - Move cursor to the end of line
+  C-a, <home>      - Move cursor to the beginning of the line
+  C-v, <pgdn>      - Move view forward (half of the screen)
+  M-v, <pgup>      - Move view backward (half of the screen)
+  C-s              - Search forward [interactive prompt]
+  C-r              - Search backward [interactive prompt]
+  C-j              - Insert a newline character and autoindent
+  <enter>          - Insert a newline character
+  <backspace>      - Delete one character backwards
+  C-d, <delete>    - Delete one character in-place
+  M-d              - Kill word
+  C-k              - Kill line
+  <any other key>  - Insert character
 
-(De)indent mode:
-  >                         - Indent
-  <                         - Deindent
-  Any other key             - Dispatch key to default path and quit mode
+Mark and region operations:
+  C-<space>        - Set mark
+  C-x C-x          - Swap cursor and mark locations
+  C-x > (>...)     - Indent region (lines between the cursor and the mark)
+  C-x < (<...)     - Deindent region (lines between the cursor and the mark)
+  C-w              - Kill region (between the cursor and the mark)
+  M-w              - Copy region (between the cursor and the mark)
+  C-y              - Yank (aka Paste) previously killed/copied text
 
-Redo mode:
-  C-/                       - Redo
-  Any other key             - Dispatch key to default path and quit mode
+Advanced:
+  M-/              - Local words autocompletion
+  C-x C-a          - Invoke buffer specific autocompletion menu [menu]
+  C-x (            - Start keyboard macro recording
+  C-x )            - Stop keyboard macro recording
+  C-x e (e...)     - Stop keyboard macro recording and execute it
 
-I-search forward mode:
-  Type text                 - Incrementally search for a word
-  C-s                       - Next
-  C-r                       - Previous (and go to i-search backward mode)
 
-I-search backward mode:
-  Type text                 - Incrementally search for a word
-  C-r                       - Previous
-  C-s                       - Next (and go to i-search forward mode)
+ --== Current development state==--
 
-Local autocompletion mode:
-  M-/                       - Substitute next proposal
-  Any other key             - Dispatch key to default path and quit mode
+I'm still in process of designing some parts of it. Bits of functionality are
+missing, but frankly I write godit in godit already and I use godit for
+everything else on my system (EDITOR=godit). This README was written in godit
+from scratch, I write commit messages in godit, I write code in godit, I write
+configs and scripts in godit. The editor is definitely usable, but it is
+certain that some corner cases are not covered. Just try it, perhaps you would
+like it. Oh and I'm very picky about feature suggestions at the moment,
+suggest, but don't expect too much.
