@@ -100,7 +100,7 @@ func (g *godit) kill_buffer(buf *buffer) {
 		}
 		if replacement == nil {
 			replacement = new_empty_buffer()
-			replacement.name = g.buffer_name("*new*")
+			replacement.name = g.buffer_name("unnamed")
 			g.buffers = append(g.buffers, replacement)
 		}
 	}

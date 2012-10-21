@@ -17,6 +17,7 @@ func init_key_press_mode(godit *godit, actions map[rune]func(), def rune, prompt
 	k.godit = godit
 	k.actions = actions
 	k.def = def
+	k.prompt = prompt
 	k.godit.set_status(prompt)
 	return k
 }
