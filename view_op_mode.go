@@ -151,15 +151,6 @@ func (v view_op_mode) on_key(ev *termbox.Event) {
 		case 'k':
 			g.kill_active_view()
 			return
-		case 'o':
-			// TODO: this is copy & paste, move it to func
-			sibling := g.active.sibling()
-			if sibling != nil {
-				g.active.leaf.deactivate()
-				g.active = sibling
-				g.active.leaf.activate()
-			}
-			return
 		}
 	}
 

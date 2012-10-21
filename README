@@ -49,6 +49,7 @@ View/buffer operations:
 View operations mode:
   v                - Split active view vertically
   h                - Split active view horizontally
+  k                - Kill active view
   C-f, <right>     - Expand/shrink active view to the right
   C-b, <left>      - Expand/shrink active view to the left
   C-n, <down>      - Expand/shrink active view to the bottom
