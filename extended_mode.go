@@ -99,7 +99,22 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 			g.set_overlay_mode(init_region_indent_mode(g, -1))
 			return
 		case 'k':
-			g.kill_buffer(b)
+			if !b.synced_with_disk() {
+				g.set_overlay_mode(init_key_press_mode(
+					g,
+					map[rune]func(){
+						'y': func() {
+							g.kill_buffer(b)
+						},
+						'n': func() {},
+					},
+					0,
+					"Buffer " + b.name + " modified; kill anyway? (y or n)",
+				))
+				return
+			} else {
+				g.kill_buffer(b)
+			}
 		case 'S':
 			if ev.Mod&termbox.ModAlt != 0 {
 				g.set_overlay_mode(init_line_edit_mode(g,
