@@ -92,6 +92,7 @@ Advanced:
   C-x (            - Start keyboard macro recording
   C-x )            - Stop keyboard macro recording
   C-x e (e...)     - Stop keyboard macro recording and execute it
+  C-x =            - Info about character under the cursor
 
 
  --== Current development state==--

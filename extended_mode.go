@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/nsf/termbox-go"
 	"github.com/nsf/tulib"
+	"strconv"
 )
 
 //----------------------------------------------------------------------------
@@ -129,6 +130,17 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 					g.save_as_buffer_lemp(false)))
 				return
 			}
+		case '=':
+			var r rune
+			if v.cursor.eol() {
+				r = '\n'
+			} else {
+				r, _ = v.cursor.rune_under()
+			}
+			g.set_status("Char: %s (dec: %d, oct: %s, hex: %s)",
+				strconv.QuoteRune(r), r,
+				strconv.FormatInt(int64(r), 8),
+				strconv.FormatInt(int64(r), 16))
 		default:
 			goto undefined
 		}
