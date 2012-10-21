@@ -110,7 +110,7 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 						'n': func() {},
 					},
 					0,
-					"Buffer " + b.name + " modified; kill anyway? (y or n)",
+					"Buffer "+b.name+" modified; kill anyway? (y or n)",
 				))
 				return
 			} else {
