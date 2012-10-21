@@ -598,11 +598,13 @@ func (g *godit) save_as_buffer_lemp(raw bool) line_edit_mode_params {
 
 		on_apply: func(linebuf *buffer) {
 			v.presave_cleanup(raw)
-			fullpath := abs_path(string(linebuf.contents()))
+			name := string(linebuf.contents())
+			fullpath := abs_path(name)
 			err := b.save_as(fullpath)
 			if err != nil {
 				g.set_status(err.Error())
 			} else {
+				b.name = g.buffer_name(name)
 				b.path = fullpath
 				v.dirty |= dirty_status
 				g.set_status("Wrote %s", b.path)
