@@ -604,6 +604,7 @@ func (g *godit) save_as_buffer_lemp(raw bool) line_edit_mode_params {
 			if err != nil {
 				g.set_status(err.Error())
 			} else {
+				b.name = ""
 				b.name = g.buffer_name(name)
 				b.path = fullpath
 				v.dirty |= dirty_status
