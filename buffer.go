@@ -131,8 +131,6 @@ func new_buffer(r io.Reader) (*buffer, error) {
 
 	// history
 	b.init_history()
-	b.on_disk = b.history
-
 	return b, err
 }
 
@@ -175,6 +173,7 @@ func (b *buffer) init_history() {
 	sentinel.next = first
 	first.prev = sentinel
 	b.history = sentinel
+	b.on_disk = sentinel
 }
 
 func (b *buffer) is_mark_set() bool {

@@ -74,7 +74,7 @@ func new_godit(filenames []string) *godit {
 	}
 	if len(g.buffers) == 0 {
 		buf := new_empty_buffer()
-		buf.name = g.buffer_name("*new*")
+		buf.name = g.buffer_name("unnamed")
 		g.buffers = append(g.buffers, buf)
 	}
 	g.views = new_view_tree_leaf(nil, new_view(g.view_context(), g.buffers[0]))
@@ -199,9 +199,9 @@ func (g *godit) new_buffer_from_file(filename string) (*buffer, error) {
 		if err != nil {
 			return nil, err
 		}
+		buf.path = fullpath
 	}
 
-	buf.path = fullpath
 	buf.name = g.buffer_name(filename)
 	g.buffers = append(g.buffers, buf)
 	return buf, nil
@@ -529,13 +529,13 @@ func (g *godit) save_active_buffer(raw bool) {
 	v := g.active.leaf
 	b := v.buf
 
-	if b.synced_with_disk() {
-		g.set_status("(No changes need to be saved)")
-		g.set_overlay_mode(nil)
-		return
-	}
-
 	if b.path != "" {
+		if b.synced_with_disk() {
+			g.set_status("(No changes need to be saved)")
+			g.set_overlay_mode(nil)
+			return
+		}
+
 		v.presave_cleanup(raw)
 		err := b.save()
 		if err != nil {
