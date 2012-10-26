@@ -1535,6 +1535,65 @@ func (v *view) collect_words(slice [][]byte, dups *llrb_tree, ignorecase bool) [
 	return slice
 }
 
+func (v *view) search_and_replace(word, repl []byte) {
+	// assumes mark is set
+	c1, c2 := swap_cursors_maybe(v.cursor, v.buf.mark)
+	cur := cursor_location{
+		line:     c1.line,
+		line_num: c1.line_num,
+		boffset:  c1.boffset,
+	}
+	for {
+		var end int
+		if cur.line == c2.line {
+			end = c2.boffset
+		} else {
+			end = len(cur.line.data)
+		}
+
+		i := bytes.Index(cur.line.data[cur.boffset:end], word)
+		if i != -1 {
+			// match on this line, replace it
+			c := cur
+			c.boffset += i
+			v.action_delete(c, len(word))
+
+			// It is safe to use the original 'repl' here, but be
+			// very careful with that, it may change. 'repl' comes
+			// from 'godit.s_and_r_last_repl', if someone decides
+			// to make it mutable, then 'repl' must be copied
+			// somewhere in this func.
+			v.action_insert(c, repl)
+
+			// special correction if we're on the same line as 'c2'
+			if cur.line == c2.line {
+				c2.boffset += len(repl) - len(word)
+			}
+
+			if cur.line == v.cursor.line && c.boffset < v.cursor.boffset {
+				c := v.cursor
+				c.boffset += len(repl) - len(word)
+				v.move_cursor_to(c)
+			}
+
+			// continue with the same line
+			cur.boffset += len(repl)
+			continue
+		}
+
+		// nothing on this line found, terminate or continue to the next line
+		if cur.line == c2.line {
+			break
+		}
+
+		cur.line = cur.line.next
+		cur.line_num++
+		cur.boffset = 0
+	}
+
+	v.ctx.set_status("Replaced %s with %s", word, repl)
+}
+
 func (v *view) other_buffers(cb func(buf *buffer)) {
 	bufs := *v.ctx.buffers
 	for _, buf := range bufs {

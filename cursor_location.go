@@ -354,3 +354,18 @@ func (c cursor_location) search_backward(word []byte) (cursor_location, bool) {
 	}
 	return c, false
 }
+
+func swap_cursors_maybe(c1, c2 cursor_location) (r1, r2 cursor_location) {
+	if c1.line_num == c2.line_num {
+		if c1.boffset > c2.boffset {
+			return c2, c1
+		} else {
+			return c1, c2
+		}
+	}
+
+	if c1.line_num > c2.line_num {
+		return c2, c1
+	}
+	return c1, c2
+}

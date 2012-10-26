@@ -46,11 +46,12 @@ func (l *line_edit_mode) on_key(ev *termbox.Event) {
 			}
 		}
 
+		// reset overlay mode earlier so that 'on_apply' can
+		// override it
+		l.godit.set_overlay_mode(nil)
 		if l.on_apply != nil {
 			l.on_apply(l.linebuf)
 		}
-		l.godit.set_overlay_mode(nil)
-		return
 	case termbox.KeyTab:
 		l.lineview.on_vcommand(vcommand_autocompl_init, 0)
 	default:

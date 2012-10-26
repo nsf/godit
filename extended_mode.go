@@ -61,6 +61,13 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 		g.active.leaf.on_vcommand(vcommand_redo, 0)
 		g.set_overlay_mode(init_redo_mode(g))
 		return
+	case termbox.KeyCtrlR:
+		if !v.buf.is_mark_set() {
+			v.ctx.set_status("The mark is not set now, so there is no region")
+			break
+		}
+		g.set_overlay_mode(init_line_edit_mode(g, g.search_and_replace_lemp1()))
+		return
 	default:
 		switch ev.Ch {
 		case '0':

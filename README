@@ -82,6 +82,7 @@ Mark and region operations:
   C-x C-x          - Swap cursor and mark locations
   C-x > (>...)     - Indent region (lines between the cursor and the mark)
   C-x < (<...)     - Deindent region (lines between the cursor and the mark)
+  C-x C-r          - Search & replace (within region) [prompt]
   C-w              - Kill region (between the cursor and the mark)
   M-w              - Copy region (between the cursor and the mark)
   C-y              - Yank (aka Paste) previously killed/copied text

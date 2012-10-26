@@ -16,6 +16,7 @@ const (
 	view_horizontal_threshold = 10
 )
 
+// this is a structure which represents a key press, used for keyboard macros
 type key_event struct {
 	mod termbox.Modifier
 	_   [1]byte
@@ -61,6 +62,8 @@ type godit struct {
 	recording         bool
 	killbuffer        []byte
 	isearch_last_word []byte
+	s_and_r_last_word []byte
+	s_and_r_last_repl []byte
 }
 
 func new_godit(filenames []string) *godit {
@@ -627,6 +630,62 @@ func (g *godit) goto_line_lemp() line_edit_mode_params {
 				return
 			}
 			v.on_vcommand(vcommand_move_cursor_to_line, rune(num))
+		},
+	}
+}
+
+// "lemp" stands for "line edit mode params"
+func (g *godit) search_and_replace_lemp1() line_edit_mode_params {
+	var prompt string
+	if len(g.s_and_r_last_word) != 0 {
+		prompt = fmt.Sprintf("Replace string [%s]:", g.s_and_r_last_word)
+	} else {
+		prompt = "Replace string:"
+	}
+	return line_edit_mode_params{
+		prompt: prompt,
+		on_apply: func(buf *buffer) {
+			var word []byte
+			contents := buf.contents()
+			if len(contents) == 0 {
+				if len(g.s_and_r_last_word) != 0 {
+					word = g.s_and_r_last_word
+				}
+			} else {
+				word = clone_byte_slice(contents)
+			}
+			if word == nil {
+				g.set_status("Nothing to replace")
+				return
+			}
+			g.set_overlay_mode(init_line_edit_mode(g, g.search_and_replace_lemp2(word)))
+		},
+	}
+}
+
+// "lemp" stands for "line edit mode params"
+func (g *godit) search_and_replace_lemp2(word []byte) line_edit_mode_params {
+	var prompt string
+	if len(g.s_and_r_last_repl) != 0 {
+		prompt = fmt.Sprintf("Replace string %s with [%s]:", word, g.s_and_r_last_repl)
+	} else {
+		prompt = fmt.Sprintf("Replace string %s with:", word)
+	}
+	return line_edit_mode_params{
+		prompt: prompt,
+		on_apply: func(buf *buffer) {
+			var repl []byte
+			contents := buf.contents()
+			if len(contents) == 0 {
+				if len(g.s_and_r_last_repl) != 0 {
+					repl = g.s_and_r_last_repl
+				}
+			} else {
+				repl = clone_byte_slice(contents)
+			}
+			g.active.leaf.search_and_replace(word, repl)
+			g.s_and_r_last_word = word
+			g.s_and_r_last_repl = repl
 		},
 	}
 }
