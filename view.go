@@ -942,6 +942,18 @@ func (v *view) kill_word() {
 	}
 }
 
+func (v *view) kill_word_backward() {
+	c2 := v.cursor
+	c1 := c2
+	c1.move_one_word_backward()
+	d := c1.distance(c2)
+	if d > 0 {
+		v.prepend_to_kill_buffer(c1, d)
+		v.action_delete(c1, d)
+		v.move_cursor_to(c1)
+	}
+}
+
 func (v *view) kill_region() {
 	if !v.buf.is_mark_set() {
 		v.ctx.set_status("The mark is not set now, so there is no region")
@@ -1110,6 +1122,8 @@ func (v *view) on_vcommand(cmd vcommand, arg rune) {
 		v.kill_line()
 	case vcommand_kill_word:
 		v.kill_word()
+	case vcommand_kill_word_backward:
+		v.kill_word_backward()
 	case vcommand_kill_region:
 		v.kill_region()
 	case vcommand_copy_region:
@@ -1177,7 +1191,11 @@ func (v *view) on_key(ev *termbox.Event) {
 			v.on_vcommand(vcommand_insert_rune, c)
 		}
 	case termbox.KeyBackspace, termbox.KeyBackspace2:
-		v.on_vcommand(vcommand_delete_rune_backward, 0)
+		if ev.Mod&termbox.ModAlt != 0 {
+			v.on_vcommand(vcommand_kill_word_backward, 0)
+		} else {
+			v.on_vcommand(vcommand_delete_rune_backward, 0)
+		}
 	case termbox.KeyDelete, termbox.KeyCtrlD:
 		v.on_vcommand(vcommand_delete_rune, 0)
 	case termbox.KeyCtrlK:
@@ -1381,6 +1399,19 @@ func (v *view) append_to_kill_buffer(cursor cursor_location, nbytes int) {
 	}
 
 	kb = append(kb, cursor.extract_bytes(nbytes)...)
+	*v.ctx.kill_buffer = kb
+}
+
+func (v *view) prepend_to_kill_buffer(cursor cursor_location, nbytes int) {
+	kb := *v.ctx.kill_buffer
+
+	switch v.last_vcommand {
+	case vcommand_kill_word_backward, vcommand_kill_region:
+	default:
+		kb = kb[:0]
+	}
+
+	kb = append(cursor.extract_bytes(nbytes), kb...)
 	*v.ctx.kill_buffer = kb
 }
 
@@ -1655,6 +1686,7 @@ const (
 	vcommand_delete_rune
 	vcommand_kill_line
 	vcommand_kill_word
+	vcommand_kill_word_backward
 	vcommand_kill_region
 	_vcommand_deletion_end
 

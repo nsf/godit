@@ -74,6 +74,7 @@ Cursor/view movement and text editing:
   <backspace>      - Delete one character backwards
   C-d, <delete>    - Delete one character in-place
   M-d              - Kill word
+  M-<backspace>    - Kill word backwards
   C-k              - Kill line
   <any other key>  - Insert character
 
