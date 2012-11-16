@@ -22,5 +22,6 @@ func suspend(g *godit) {
 	if err != nil {
 		panic(err)
 	}
+	termbox.SetInputMode(termbox.InputAlt)
 	g.resize()
 }
