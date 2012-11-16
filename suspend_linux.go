@@ -24,4 +24,5 @@ func suspend(g *godit) {
 		panic(err)
 	}
 	g.uibuf = tulib.TermboxBuffer()
+	g.resize()
 }
