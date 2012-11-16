@@ -1393,7 +1393,7 @@ func (v *view) append_to_kill_buffer(cursor cursor_location, nbytes int) {
 	kb := *v.ctx.kill_buffer
 
 	switch v.last_vcommand {
-	case vcommand_kill_word, vcommand_kill_region, vcommand_kill_line:
+	case vcommand_kill_word, vcommand_kill_word_backward, vcommand_kill_region, vcommand_kill_line:
 	default:
 		kb = kb[:0]
 	}
@@ -1406,7 +1406,7 @@ func (v *view) prepend_to_kill_buffer(cursor cursor_location, nbytes int) {
 	kb := *v.ctx.kill_buffer
 
 	switch v.last_vcommand {
-	case vcommand_kill_word_backward, vcommand_kill_region:
+	case vcommand_kill_word, vcommand_kill_word_backward, vcommand_kill_region, vcommand_kill_line:
 	default:
 		kb = kb[:0]
 	}
