@@ -3,7 +3,6 @@ package main
 import (
 	"syscall"
 	"github.com/nsf/termbox-go"
-	"github.com/nsf/tulib"
 )
 
 func suspend(g *godit) {
@@ -23,6 +22,5 @@ func suspend(g *godit) {
 	if err != nil {
 		panic(err)
 	}
-	g.uibuf = tulib.TermboxBuffer()
 	g.resize()
 }
