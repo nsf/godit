@@ -420,9 +420,8 @@ func (g *godit) on_sys_key(ev *termbox.Event) {
 		v.ac = nil
 		g.set_overlay_mode(nil)
 		g.set_status("Quit")
-//	case termbox.KeyF1:
-//		g.buffers[0].dump_history()
-//		g.active.leaf.dump_info()
+	case termbox.KeyCtrlZ:
+		suspend(g)
 	}
 }
 
