@@ -433,6 +433,9 @@ func (g *godit) on_alt_key(ev *termbox.Event) bool {
 	case '/':
 		g.set_overlay_mode(init_autocomplete_mode(g))
 		return true
+	case 'q':
+		g.set_overlay_mode(init_fill_region_mode(g))
+		return true
 	}
 	return false
 }
@@ -651,7 +654,7 @@ func (g *godit) search_and_replace_lemp1() line_edit_mode_params {
 					word = g.s_and_r_last_word
 				}
 			} else {
-				word = clone_byte_slice(contents)
+				word = contents
 			}
 			if word == nil {
 				g.set_status("Nothing to replace")
@@ -670,6 +673,7 @@ func (g *godit) search_and_replace_lemp2(word []byte) line_edit_mode_params {
 	} else {
 		prompt = fmt.Sprintf("Replace string %s with:", word)
 	}
+	v := g.active.leaf
 	return line_edit_mode_params{
 		prompt: prompt,
 		on_apply: func(buf *buffer) {
@@ -680,9 +684,12 @@ func (g *godit) search_and_replace_lemp2(word []byte) line_edit_mode_params {
 					repl = g.s_and_r_last_repl
 				}
 			} else {
-				repl = clone_byte_slice(contents)
+				repl = contents
 			}
+			v.finalize_action_group()
+			v.last_vcommand = vcommand_none
 			g.active.leaf.search_and_replace(word, repl)
+			v.finalize_action_group()
 			g.s_and_r_last_word = word
 			g.s_and_r_last_repl = repl
 		},

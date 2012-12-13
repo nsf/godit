@@ -1521,6 +1521,93 @@ func (v *view) deindent_region() {
 	v.deindent_line(end)
 }
 
+func (v *view) fill_region(maxv int, prefix []byte) {
+	var buf, out bytes.Buffer
+	beg, end := v.line_region()
+	data := beg.extract_bytes(beg.distance(end))
+	indent := data[:index_first_non_space(data)]
+	indent_vlen := vlen(indent, 0)
+	prefix_vlen := vlen(prefix, indent_vlen)
+	offset := 0
+	for {
+		// for each line
+		// 1. skip whitespace
+		offset += index_first_non_space(data[offset:])
+		// 2. skip prefix
+		if bytes.HasPrefix(data[offset:], prefix) {
+			offset += len(prefix)
+		}
+		// 3. skip more whitespace
+		offset += index_first_non_space(data[offset:])
+		// append line to the buffer without \n
+		i := bytes.Index(data[offset:], []byte("\n"))
+		if i == -1 {
+			iter_nonspace_words(data[offset:], func(word []byte) {
+				buf.Write(word)
+				buf.WriteString(" ")
+			})
+			break
+		} else {
+			iter_nonspace_words(data[offset:offset+i], func(word []byte) {
+				buf.Write(word)
+				buf.WriteString(" ")
+			})
+			offset += i+1
+		}
+	}
+	// just in case if there were unnecessary space at the end, clean it up
+	if buf.Len() > 0 && buf.Bytes()[buf.Len()-1] == ' ' {
+		buf.Truncate(buf.Len()-1)
+	}
+
+	offset = 0
+	for {
+		data := buf.Bytes()[offset:]
+		out.Write(indent)
+		if len(prefix) > 0 {
+			out.Write(prefix)
+			out.WriteString(" ")
+		}
+
+		v := indent_vlen + prefix_vlen + 1
+		lastspacei := -1
+		i := 0
+		for i < len(data) {
+			r, rlen := utf8.DecodeRune(data[i:])
+			if r == ' ' {
+				// if the rune is a space and we still haven't found one
+				// or we're still before maxv, update the index of the
+				// last space before maxv
+				if lastspacei == -1 || v < maxv {
+					lastspacei = i
+				}
+			}
+
+			// advance v and i
+			v += rune_advance_len(r, v)
+			i += rlen
+
+			if lastspacei != -1 && v >= maxv {
+				// we've seen last space and now we're past maxv, break
+				break
+			}
+		}
+
+		if i >= len(data) {
+			out.Write(data)
+			break
+		} else {
+			out.Write(data[:lastspacei])
+			out.WriteString("\n")
+			offset += lastspacei+1
+		}
+	}
+
+	v.action_delete(beg, len(data))
+	v.action_insert(beg, out.Bytes())
+	v.move_cursor_to(beg)
+}
+
 func (v *view) collect_words(slice [][]byte, dups *llrb_tree, ignorecase bool) [][]byte {
 	append_word_full := func(prefix, word []byte) {
 		lword := word

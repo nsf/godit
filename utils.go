@@ -57,6 +57,39 @@ func rune_advance_len(r rune, pos int) int {
 	return 1
 }
 
+func vlen(data []byte, pos int) int {
+	origin := pos
+	for len(data) > 0 {
+		r, rlen := utf8.DecodeRune(data)
+		data = data[rlen:]
+		pos += rune_advance_len(r, pos)
+	}
+	return pos - origin
+}
+
+func iter_nonspace_words(data []byte, cb func(word []byte)) {
+	for {
+		if len(data) == 0 {
+			return
+		}
+
+		for is_space(data[0]) && len(data) > 0 {
+			data = data[1:]
+		}
+
+		if len(data) == 0 {
+			return
+		}
+
+		i := 0
+		for i < len(data) && !is_space(data[i]) {
+			i += 1
+		}
+		cb(data[:i])
+		data = data[i:]
+	}
+}
+
 func iter_words(data []byte, cb func(word []byte)) {
 	for {
 		if len(data) == 0 {
@@ -195,6 +228,10 @@ func bytes_between(a, b cursor_location) []byte {
 
 func is_word(r rune) bool {
 	return r == '_' || unicode.IsLetter(r) || unicode.IsNumber(r)
+}
+
+func is_space(b byte) bool {
+	return b == ' ' || b == '\t' || b == '\n'
 }
 
 func find_place_for_rect(win, pref tulib.Rect) tulib.Rect {

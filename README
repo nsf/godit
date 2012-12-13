@@ -92,6 +92,7 @@ Mark and region operations:
   C-w              - Kill region (between the cursor and the mark)
   M-w              - Copy region (between the cursor and the mark)
   C-y              - Yank (aka Paste) previously killed/copied text
+  M-q              - Fill region (lines between the cursor and the mark) [prompt]
 
 Advanced:
   M-/              - Local words autocompletion
