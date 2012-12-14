@@ -32,7 +32,7 @@ func (f *fill_region_context) maxv_lemp() line_edit_mode_params {
 		prompt: "Fill width:",
 		initial_content: "80",
 		on_apply: func(buf *buffer) {
-			if i, err := strconv.Atoi(string(buf.contents())); err != nil {
+			if i, err := strconv.Atoi(string(buf.contents())); err == nil {
 				f.maxv = i
 			}
 			v.finalize_action_group()
