@@ -51,6 +51,10 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 		return
 	case termbox.KeyCtrlA:
 		v.on_vcommand(vcommand_autocompl_init, 0)
+	case termbox.KeyCtrlU:
+		v.on_vcommand(vcommand_region_to_upper, 0)
+	case termbox.KeyCtrlL:
+		v.on_vcommand(vcommand_region_to_lower, 0)
 	case termbox.KeyCtrlF:
 		g.set_overlay_mode(init_line_edit_mode(g, g.open_buffer_lemp()))
 		return

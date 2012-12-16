@@ -1075,7 +1075,8 @@ func (v *view) on_delete(a *action) {
 }
 
 func (v *view) on_vcommand(cmd vcommand, arg rune) {
-	if cmd.class() != v.last_vcommand.class() {
+	last_class := v.last_vcommand.class()
+	if cmd.class() != last_class || last_class == vcommand_class_misc {
 		v.finalize_action_group()
 	}
 
@@ -1145,6 +1146,18 @@ func (v *view) on_vcommand(cmd vcommand, arg rune) {
 		v.indent_region()
 	case vcommand_deindent_region:
 		v.deindent_region()
+	case vcommand_region_to_upper:
+		v.region_to(bytes.ToUpper)
+	case vcommand_region_to_lower:
+		v.region_to(bytes.ToLower)
+	case vcommand_word_to_upper:
+		v.word_to(bytes.ToUpper)
+	case vcommand_word_to_title:
+		v.word_to(func(s []byte) []byte {
+			return bytes.Title(bytes.ToLower(s))
+		})
+	case vcommand_word_to_lower:
+		v.word_to(bytes.ToLower)
 	}
 
 	v.last_vcommand = cmd
@@ -1230,6 +1243,12 @@ func (v *view) on_key(ev *termbox.Event) {
 			v.on_vcommand(vcommand_kill_word, 0)
 		case 'w':
 			v.on_vcommand(vcommand_copy_region, 0)
+		case 'u':
+			v.on_vcommand(vcommand_word_to_upper, 0)
+		case 'l':
+			v.on_vcommand(vcommand_word_to_lower, 0)
+		case 'c':
+			v.on_vcommand(vcommand_word_to_title, 0)
 		}
 	} else if ev.Ch != 0 {
 		v.on_vcommand(vcommand_insert_rune, ev.Ch)
@@ -1453,6 +1472,15 @@ func (v *view) copy_region() {
 	}
 }
 
+// assumes that filtered text has the same length
+func (v *view) region_to(filter func([]byte) []byte) {
+	if !v.buf.is_mark_set() {
+		v.ctx.set_status("The mark is not set now, so there is no region")
+		return
+	}
+	v.filter_text(v.cursor, v.buf.mark, filter)
+}
+
 func (v *view) set_tags(tags ...view_tag) {
 	v.tags = v.tags[:0]
 	if len(tags) == 0 {
@@ -1521,6 +1549,25 @@ func (v *view) deindent_region() {
 		beg.line_num++
 	}
 	v.deindent_line(end)
+}
+
+func (v *view) word_to(filter func([]byte) []byte) {
+	c1, c2 := v.cursor, v.cursor
+	c2.move_one_word_forward()
+	v.filter_text(c1, c2, filter)
+	c1.move_one_word_forward()
+	v.move_cursor_to(c1)
+}
+
+// Filter _must_ return a new slice and shouldn't touch contents of the
+// argument, perfect filter examples are: bytes.Title, bytes.ToUpper,
+// bytes.ToLower
+func (v *view) filter_text(from, to cursor_location, filter func([]byte) []byte) {
+	c1, c2 := swap_cursors_maybe(from, to)
+	d := c1.distance(c2)
+	v.action_delete(c1, d)
+	data := filter(v.buf.history.last_action().data)
+	v.action_insert(c1, data)
 }
 
 func (v *view) fill_region(maxv int, prefix []byte) {
@@ -1790,6 +1837,11 @@ const (
 	vcommand_indent_region
 	vcommand_deindent_region
 	vcommand_copy_region
+	vcommand_region_to_upper
+	vcommand_region_to_lower
+	vcommand_word_to_upper
+	vcommand_word_to_title
+	vcommand_word_to_lower
 	vcommand_autocompl_init
 	vcommand_autocompl_move_cursor_up
 	vcommand_autocompl_move_cursor_down

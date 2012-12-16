@@ -81,6 +81,9 @@ Cursor/view movement and text editing:
   M-d              - Kill word
   M-<backspace>    - Kill word backwards
   C-k              - Kill line
+  M-u              - Convert the following word to upper case
+  M-l              - Convert the following word to lower case
+  M-c              - Capitalize the following word
   <any other key>  - Insert character
 
 Mark and region operations:
@@ -89,6 +92,8 @@ Mark and region operations:
   C-x > (>...)     - Indent region (lines between the cursor and the mark)
   C-x < (<...)     - Deindent region (lines between the cursor and the mark)
   C-x C-r          - Search & replace (within region) [prompt]
+  C-x C-u          - Convert the region to upper case
+  C-x C-l          - Convert the region to lower case
   C-w              - Kill region (between the cursor and the mark)
   M-w              - Copy region (between the cursor and the mark)
   C-y              - Yank (aka Paste) previously killed/copied text
