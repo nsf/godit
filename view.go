@@ -1424,10 +1424,12 @@ func (v *view) yank() {
 	}
 	cbuf := clone_byte_slice(buf)
 	v.action_insert(cursor, cbuf)
-	for i, n := 0, len(buf); i < n; i++ {
+	for len(buf) > 0 {
+		_, rlen := utf8.DecodeRune(buf)
+		buf = buf[rlen:]
 		cursor.move_one_rune_forward()
-		v.move_cursor_to(cursor)
 	}
+	v.move_cursor_to(cursor)
 }
 
 // shameless copy & paste from kill_region
