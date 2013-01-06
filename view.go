@@ -1721,23 +1721,22 @@ func (v *view) search_and_replace(word, repl []byte) {
 		i := bytes.Index(cur.line.data[cur.boffset:end], word)
 		if i != -1 {
 			// match on this line, replace it
-			c := cur
-			c.boffset += i
-			v.action_delete(c, len(word))
+			cur.boffset += i
+			v.action_delete(cur, len(word))
 
 			// It is safe to use the original 'repl' here, but be
 			// very careful with that, it may change. 'repl' comes
 			// from 'godit.s_and_r_last_repl', if someone decides
 			// to make it mutable, then 'repl' must be copied
 			// somewhere in this func.
-			v.action_insert(c, repl)
+			v.action_insert(cur, repl)
 
 			// special correction if we're on the same line as 'c2'
 			if cur.line == c2.line {
 				c2.boffset += len(repl) - len(word)
 			}
 
-			if cur.line == v.cursor.line && c.boffset < v.cursor.boffset {
+			if cur.line == v.cursor.line && cur.boffset < v.cursor.boffset {
 				c := v.cursor
 				c.boffset += len(repl) - len(word)
 				v.move_cursor_to(c)
