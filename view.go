@@ -1658,7 +1658,7 @@ func (v *view) fill_region(maxv int, prefix []byte) {
 }
 
 func (v *view) collect_words(slice [][]byte, dups *llrb_tree, ignorecase bool) [][]byte {
-	append_word_full := func(prefix, word []byte) {
+	append_word_full := func(prefix, word []byte, clone bool) {
 		lword := word
 		lprefix := prefix
 		if ignorecase {
@@ -1671,7 +1671,11 @@ func (v *view) collect_words(slice [][]byte, dups *llrb_tree, ignorecase bool) [
 		}
 		ok := dups.insert_maybe(word)
 		if ok {
-			slice = append(slice, word)
+			if clone {
+				slice = append(slice, clone_byte_slice(word))
+			} else {
+				slice = append(slice, word)
+			}
 		}
 	}
 
@@ -1681,11 +1685,14 @@ func (v *view) collect_words(slice [][]byte, dups *llrb_tree, ignorecase bool) [
 	}
 
 	append_word := func(word []byte) {
-		append_word_full(prefix, word)
+		append_word_full(prefix, word, false)
+	}
+	append_word_clone := func(word []byte) {
+		append_word_full(prefix, word, true)
 	}
 
 	line := v.cursor.line
-	iter_words_backward(line.data[:v.cursor.boffset], append_word)
+	iter_words_backward(line.data[:v.cursor.boffset], append_word_clone)
 	line = line.prev
 	for line != nil {
 		iter_words_backward(line.data, append_word)
@@ -1693,7 +1700,7 @@ func (v *view) collect_words(slice [][]byte, dups *llrb_tree, ignorecase bool) [
 	}
 
 	line = v.cursor.line
-	iter_words(line.data[v.cursor.boffset:], append_word)
+	iter_words(line.data[v.cursor.boffset:], append_word_clone)
 	line = line.next
 	for line != nil {
 		iter_words(line.data, append_word)
