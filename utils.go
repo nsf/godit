@@ -69,11 +69,7 @@ func vlen(data []byte, pos int) int {
 
 func iter_nonspace_words(data []byte, cb func(word []byte)) {
 	for {
-		if len(data) == 0 {
-			return
-		}
-
-		for is_space(data[0]) && len(data) > 0 {
+		for len(data) > 0 && is_space(data[0]) {
 			data = data[1:]
 		}
 
@@ -98,13 +94,12 @@ func iter_words(data []byte, cb func(word []byte)) {
 
 		r, rlen := utf8.DecodeRune(data)
 		// skip non-word runes
-		for !is_word(r) && len(data) > 0 {
+		for !is_word(r) {
 			data = data[rlen:]
+			if len(data) == 0 {
+				return
+			}
 			r, rlen = utf8.DecodeRune(data)
-		}
-
-		if len(data) == 0 {
-			return
 		}
 
 		// must be on a word rune
@@ -126,13 +121,12 @@ func iter_words_backward(data []byte, cb func(word []byte)) {
 
 		r, rlen := utf8.DecodeLastRune(data)
 		// skip non-word runes
-		for !is_word(r) && len(data) > 0 {
+		for !is_word(r) {
 			data = data[:len(data)-rlen]
+			if len(data) == 0 {
+				return
+			}
 			r, rlen = utf8.DecodeLastRune(data)
-		}
-
-		if len(data) == 0 {
-			return
 		}
 
 		// must be on a word rune
