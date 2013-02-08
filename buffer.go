@@ -218,6 +218,7 @@ func (b *buffer) save_as(filename string) error {
 	if err != nil {
 		return err
 	}
+	defer f.Close()
 
 	_, err = io.Copy(f, r)
 	if err != nil {
