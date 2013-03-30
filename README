@@ -1,4 +1,3 @@
-
  --== Godit - a very religious text editor ==--
 
 Screenshots:
@@ -18,7 +17,7 @@ If you're interested in what godit feels like, it would be fair to say that it
 is an emacsish lightweight text editor. The godit uses many of the emacs key
 bindings and operates using a notion of "micromodes". It's easier to explain
 what a micromode is by a simple example. Let's take the keyboard macros feature
-from both emacs and godit. You can start recoding a macro using `C-x (` key
+from both emacs and godit. You can start recording a macro using `C-x (` key
 combination and then when you're ready to start repeating it, you do the
 following: `C-x e (e...)`. Not only `C-x e` ends the recording of a macro, it
 executes the macro once and enters a micromode, where typing `e` again, will
