@@ -70,10 +70,7 @@ func new_godit(filenames []string) *godit {
 	g := new(godit)
 	g.buffers = make([]*buffer, 0, 20)
 	for _, filename := range filenames {
-		_, err := g.new_buffer_from_file(filename)
-		if err != nil {
-			panic(err)
-		}
+		g.new_buffer_from_file(filename)
 	}
 	if len(g.buffers) == 0 {
 		buf := new_empty_buffer()
@@ -148,16 +145,14 @@ func (g *godit) open_buffers_from_pattern(pattern string) {
 
 	var buf *buffer
 	for _, match := range matches {
-		buf, err = g.new_buffer_from_file(match)
-		if err != nil {
-			panic(err)
-		}
+		buf, _ = g.new_buffer_from_file(match)
 	}
 	if buf == nil {
-		buf, err = g.new_buffer_from_file(pattern)
-		if err != nil {
-			panic(err)
-		}
+		buf, _ = g.new_buffer_from_file(pattern)
+	}
+	if buf == nil {
+		buf = new_empty_buffer()
+		buf.name = g.buffer_name("unnamed")
 	}
 	g.active.leaf.attach(buf)
 }
@@ -192,14 +187,21 @@ func (g *godit) new_buffer_from_file(filename string) (*buffer, error) {
 		return buf, nil
 	}
 
-	f, err := os.Open(fullpath)
+	_, err := os.Stat(fullpath)
 	if err != nil {
+		// assume the file is just not there
 		g.set_status("(New file)")
 		buf = new_empty_buffer()
 	} else {
+		f, err := os.Open(fullpath)
+		if err != nil {
+			g.set_status(err.Error())
+			return nil, err
+		}
 		defer f.Close()
 		buf, err = new_buffer(f)
 		if err != nil {
+			g.set_status(err.Error())
 			return nil, err
 		}
 		buf.path = fullpath
