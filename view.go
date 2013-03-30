@@ -186,11 +186,6 @@ func (v *view) attach(b *buffer) {
 
 func (v *view) detach() {
 	v.buf.delete_view(v)
-	if len(v.buf.views) == 0 {
-		// it was the last view of the buffer, let's save the view
-		// location in the buffer itself for later use
-		v.buf.loc = v.view_location
-	}
 	v.buf = nil
 }
 

@@ -519,6 +519,11 @@ func (g *godit) handle_event(ev *termbox.Event) bool {
 	case termbox.EventError:
 		panic(ev.Err)
 	}
+
+	// just dump the current view location from the view to the buffer
+	// after each event, it's cheap and does what it needs to be done
+	v := g.active.leaf
+	v.buf.loc = v.view_location
 	return true
 }
 
