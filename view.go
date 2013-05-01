@@ -242,6 +242,22 @@ func (v *view) width() int {
 	return v.uibuf.Width
 }
 
+func runeWidth(r rune) int {
+	if r >= 0x1100 &&
+		(r <= 0x115f || r == 0x2329 || r == 0x232a ||
+			(r >= 0x2e80 && r <= 0xa4cf && r != 0x303f) ||
+			(r >= 0xac00 && r <= 0xd7a3) ||
+			(r >= 0xf900 && r <= 0xfaff) ||
+			(r >= 0xfe30 && r <= 0xfe6f) ||
+			(r >= 0xff00 && r <= 0xff60) ||
+			(r >= 0xffe0 && r <= 0xffe6) ||
+			(r >= 0x20000 && r <= 0x2fffd) ||
+			(r >= 0x30000 && r <= 0x3fffd)) {
+		return 2
+	}
+	return 1
+}
+
 func (v *view) draw_line(line *line, line_num, coff, line_voffset int) {
 	x := 0
 	tabstop := 0
@@ -313,7 +329,7 @@ func (v *view) draw_line(line *line, line_num, coff, line_voffset int) {
 				v.uibuf.Cells[coff+rx] = v.make_cell(
 					line_num, bx, r)
 			}
-			x++
+			x += runeWidth(r)
 		}
 		data = data[rlen:]
 		bx += rlen
