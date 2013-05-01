@@ -54,7 +54,7 @@ func rune_advance_len(r rune, pos int) int {
 		// for invisible chars like ^R ^@ and such, two cells
 		return 2
 	}
-	return 1
+	return runeWidth(r)
 }
 
 func vlen(data []byte, pos int) int {
