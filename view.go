@@ -313,7 +313,7 @@ func (v *view) draw_line(line *line, line_num, coff, line_voffset int) {
 				v.uibuf.Cells[coff+rx] = v.make_cell(
 					line_num, bx, r)
 			}
-			x++
+			x += rune_width(r)
 		}
 		data = data[rlen:]
 		bx += rlen
