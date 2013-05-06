@@ -164,12 +164,13 @@ func readdir_stat(dir string, f *os.File) ([]os.FileInfo, error) {
 		return nil, err
 	}
 
-	fis := make([]os.FileInfo, len(names))
-	for i, name := range names {
-		fis[i], err = os.Stat(filepath.Join(dir, name))
+	fis := make([]os.FileInfo, 0, len(names))
+	for _, name := range names {
+		fi, err := os.Stat(filepath.Join(dir, name))
 		if err != nil {
-			return nil, err
+			continue
 		}
+		fis = append(fis, fi)
 	}
 	return fis, nil
 }
