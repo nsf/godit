@@ -64,6 +64,7 @@ func init_fill_region_mode(godit *godit) *line_edit_mode {
 	for _, prefix := range fill_region_prefixes {
 		if bytes.HasPrefix(data, prefix) {
 			f.prefix = prefix
+			break
 		}
 	}
 	return init_line_edit_mode(godit, f.prefix_lemp())
