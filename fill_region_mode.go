@@ -16,6 +16,7 @@ var fill_region_prefixes = [][]byte{
 	[]byte(";;;;"), // Lisp
 	[]byte(";;;"), // Lisp
 	[]byte("REM"), // cmd.exe, COMMAND.COM, Basic
+	[]byte("///"), // doxygen
 	[]byte("//"), // C, C++, C#, D, Go, Java, JavaScript, Delphi, PHP, etc.
 	[]byte(";;"), // Lisp
 	[]byte("--"), // Haskell, Lua, Ada, SQL, etc.
