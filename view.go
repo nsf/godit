@@ -1443,11 +1443,7 @@ func (v *view) yank() {
 	}
 	cbuf := clone_byte_slice(buf)
 	v.action_insert(cursor, cbuf)
-	for len(buf) > 0 {
-		_, rlen := utf8.DecodeRune(buf)
-		buf = buf[rlen:]
-		cursor.move_one_rune_forward()
-	}
+	cursor.move_n_bytes_forward(buf)
 	v.move_cursor_to(cursor)
 }
 
@@ -1568,6 +1564,8 @@ func (v *view) filter_text(from, to cursor_location, filter func([]byte) []byte)
 	v.action_delete(c1, d)
 	data := filter(v.buf.history.last_action().data)
 	v.action_insert(c1, data)
+	c1.move_n_bytes_forward(data)
+	v.move_cursor_to(c1)
 }
 
 func (v *view) fill_region(maxv int, prefix []byte) {

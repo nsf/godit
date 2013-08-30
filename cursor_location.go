@@ -151,6 +151,14 @@ func (c *cursor_location) move_one_rune_backward() {
 	}
 }
 
+func (c *cursor_location) move_n_bytes_forward(buf []byte) {
+	for len(buf) > 0 {
+		_, rlen := utf8.DecodeRune(buf)
+		buf = buf[rlen:]
+		c.move_one_rune_forward()
+	}
+}
+
 func (c *cursor_location) move_beginning_of_line() {
 	c.boffset = 0
 }
