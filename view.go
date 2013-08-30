@@ -1468,7 +1468,6 @@ func (v *view) copy_region() {
 	}
 }
 
-// assumes that filtered text has the same length
 func (v *view) region_to(filter func([]byte) []byte) {
 	if !v.buf.is_mark_set() {
 		v.ctx.set_status("The mark is not set now, so there is no region")
@@ -1564,8 +1563,10 @@ func (v *view) filter_text(from, to cursor_location, filter func([]byte) []byte)
 	v.action_delete(c1, d)
 	data := filter(v.buf.history.last_action().data)
 	v.action_insert(c1, data)
-	c1.move_n_bytes_forward(data)
-	v.move_cursor_to(c1)
+	if v.cursor != c1 {
+		c1.move_n_bytes_forward(data)
+		v.move_cursor_to(c1)
+	}
 }
 
 func (v *view) fill_region(maxv int, prefix []byte) {
