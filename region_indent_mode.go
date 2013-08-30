@@ -16,6 +16,7 @@ func init_region_indent_mode(godit *godit, dir int) region_indent_mode {
 	beg, end := v.line_region()
 	if dir > 0 {
 		v.on_vcommand(vcommand_indent_region, 0)
+		end.boffset++
 	} else if dir < 0 {
 		v.on_vcommand(vcommand_deindent_region, 0)
 	}
@@ -47,6 +48,7 @@ func (r region_indent_mode) on_key(ev *termbox.Event) {
 		case '>':
 			v.on_vcommand(vcommand_indent_region, 0)
 			g.set_status("(Type > or < to indent/deindent respectively)")
+			end.boffset++
 			goto update_tag
 		case '<':
 			v.on_vcommand(vcommand_deindent_region, 0)
