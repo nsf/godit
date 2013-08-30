@@ -1489,16 +1489,23 @@ func (v *view) set_tags(tags ...view_tag) {
 	copy(v.tags, tags)
 }
 
+func (v *view) region() (beg, end cursor_location) {
+	beg = v.cursor
+	end = v.cursor
+	if v.buf.is_mark_set() {
+		end = v.buf.mark
+	}
+	beg, end = swap_cursors_maybe(beg, end)
+	return
+}
+
 func (v *view) line_region() (beg, end cursor_location) {
 	beg = v.cursor
 	end = v.cursor
 	if v.buf.is_mark_set() {
 		end = v.buf.mark
 	}
-
-	if beg.line_num > end.line_num {
-		beg, end = end, beg
-	}
+	beg, end = swap_cursors_maybe(beg, end)
 	beg.boffset = 0
 	end.boffset = len(end.line.data)
 	return
@@ -1569,10 +1576,8 @@ func (v *view) filter_text(from, to cursor_location, filter func([]byte) []byte)
 	}
 }
 
-func (v *view) fill_region(maxv int, prefix []byte) {
+func fill_region_filt(data []byte, maxv int, prefix []byte) []byte {
 	var buf, out bytes.Buffer
-	beg, end := v.line_region()
-	data := beg.extract_bytes(beg.distance(end))
 	indent := data[:index_first_non_space(data)]
 	indent_vlen := vlen(indent, 0)
 	prefix_vlen := vlen(prefix, indent_vlen)
@@ -1650,10 +1655,16 @@ func (v *view) fill_region(maxv int, prefix []byte) {
 			offset += lastspacei+1
 		}
 	}
+	return out.Bytes()
+}
 
-	v.action_delete(beg, len(data))
-	v.action_insert(beg, out.Bytes())
-	v.move_cursor_to(beg)
+
+func (v *view) fill_region(maxv int, prefix []byte) {
+	filt := func(data []byte) []byte {
+		return fill_region_filt(data, maxv, prefix)
+	}
+	beg, end := v.line_region()
+	v.filter_text(beg, end, filt)
 }
 
 func (v *view) collect_words(slice [][]byte, dups *llrb_tree, ignorecase bool) [][]byte {
