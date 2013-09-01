@@ -20,7 +20,7 @@ var fill_region_prefixes = [][]byte{
 	[]byte("//"), // C, C++, C#, D, Go, Java, JavaScript, Delphi, PHP, etc.
 	[]byte(";;"), // Lisp
 	[]byte("--"), // Haskell, Lua, Ada, SQL, etc.
-	[]byte("::"), //md.exe, COMMAND.COM, Basic
+	[]byte("::"), // md.exe, COMMAND.COM, Basic
 	[]byte("#"), // Perl, Python, Ruby, Bash, PHP, etc.
 	[]byte(";"), // Lisp
 	[]byte(":"), // cmd.exe, COMMAND.COM, Basic
