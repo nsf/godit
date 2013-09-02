@@ -9,7 +9,7 @@ I call it religious, because there is a strong faith in the "one true way"
 of doing things. By that I mean things like: "the tab size is always an
 equivalent to 8 spaces/characters" or "each line ends with '\n' symbol and
 someone should end this '\r\n' madness" or "text files are always utf-8
-encoded". Most editor provides customizable options for these things, but
+encoded". Most editors provide customizable options for these things, but
 godit takes a different approach in that area and has no settings at all. So,
 that concludes the ideology behind godit.
 
