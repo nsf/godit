@@ -6,6 +6,7 @@ import (
 	"github.com/nsf/termbox-go"
 	"github.com/nsf/tulib"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 )
@@ -622,6 +623,37 @@ func (g *godit) save_as_buffer_lemp(raw bool) line_edit_mode_params {
 				v.dirty |= dirty_status
 				g.set_status("Wrote %s", b.path)
 			}
+		},
+	}
+}
+
+// "lemp" stands for "line edit mode params"
+func (g *godit) filter_region_lemp() line_edit_mode_params {
+	v := g.active.leaf
+	return line_edit_mode_params{
+		ac_decide: filesystem_line_ac_decide,
+		prompt: "Filter region through:",
+		on_apply: func(linebuf *buffer) {
+			v.finalize_action_group()
+			cmdstr := string(linebuf.contents())
+			v.region_to(func (data []byte) []byte {
+				// TODO: not portable
+				cmd := exec.Command("/bin/sh", "-c", cmdstr)
+				in, err := cmd.StdinPipe()
+				if err != nil {
+					return clone_byte_slice(data)
+				}
+
+				in.Write(data)
+				in.Close()
+
+				out, err := cmd.Output()
+				if err != nil {
+					return clone_byte_slice(data)
+				}
+				return out
+			})
+			v.finalize_action_group()
 		},
 	}
 }
