@@ -376,7 +376,7 @@ func (v *view) draw_status() {
 	v.uibuf.Fill(tulib.Rect{0, v.height(), v.uibuf.Width, 1}, termbox.Cell{
 		Fg: termbox.AttrReverse,
 		Bg: termbox.AttrReverse,
-		Ch: '─',
+		Ch: '-',
 	})
 
 	// on disk sync status
