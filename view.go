@@ -1111,6 +1111,8 @@ func (v *view) on_vcommand(cmd vcommand, arg rune) {
 		v.set_mark()
 	case vcommand_swap_cursor_and_mark:
 		v.swap_cursor_and_mark()
+	case vcommand_recenter:
+		v.center_view_on_cursor()
 	case vcommand_insert_rune:
 		v.insert_rune(arg)
 	case vcommand_yank:
@@ -1187,6 +1189,8 @@ func (v *view) on_key(ev *termbox.Event) {
 		v.on_vcommand(vcommand_move_cursor_beginning_of_line, 0)
 	case termbox.KeyCtrlV, termbox.KeyPgdn:
 		v.on_vcommand(vcommand_move_view_half_forward, 0)
+	case termbox.KeyCtrlL:
+		v.on_vcommand(vcommand_recenter, 0)
 	case termbox.KeyCtrlSlash:
 		v.on_vcommand(vcommand_undo, 0)
 	case termbox.KeySpace:
@@ -1824,6 +1828,7 @@ const (
 	vcommand_move_view_half_backward
 	vcommand_set_mark
 	vcommand_swap_cursor_and_mark
+	vcommand_recenter
 	_vcommand_movement_end
 
 	// insertion commands
