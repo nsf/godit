@@ -632,11 +632,11 @@ func (g *godit) filter_region_lemp() line_edit_mode_params {
 	v := g.active.leaf
 	return line_edit_mode_params{
 		ac_decide: filesystem_line_ac_decide,
-		prompt: "Filter region through:",
+		prompt:    "Filter region through:",
 		on_apply: func(linebuf *buffer) {
 			v.finalize_action_group()
 			cmdstr := string(linebuf.contents())
-			v.region_to(func (data []byte) []byte {
+			v.region_to(func(data []byte) []byte {
 				// TODO: not portable
 				cmd := exec.Command("/bin/sh", "-c", cmdstr)
 				in, err := cmd.StdinPipe()

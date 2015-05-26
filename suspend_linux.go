@@ -1,8 +1,8 @@
 package main
 
 import (
-	"syscall"
 	"github.com/nsf/termbox-go"
+	"syscall"
 )
 
 func suspend(g *godit) {

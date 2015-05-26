@@ -1609,12 +1609,12 @@ func fill_region_filt(data []byte, maxv int, prefix []byte) []byte {
 				buf.Write(word)
 				buf.WriteString(" ")
 			})
-			offset += i+1
+			offset += i + 1
 		}
 	}
 	// just in case if there were unnecessary space at the end, clean it up
 	if buf.Len() > 0 && buf.Bytes()[buf.Len()-1] == ' ' {
-		buf.Truncate(buf.Len()-1)
+		buf.Truncate(buf.Len() - 1)
 	}
 
 	offset = 0
@@ -1656,12 +1656,11 @@ func fill_region_filt(data []byte, maxv int, prefix []byte) []byte {
 		} else {
 			out.Write(data[:lastspacei])
 			out.WriteString("\n")
-			offset += lastspacei+1
+			offset += lastspacei + 1
 		}
 	}
 	return out.Bytes()
 }
-
 
 func (v *view) fill_region(maxv int, prefix []byte) {
 	filt := func(data []byte) []byte {
