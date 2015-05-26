@@ -71,6 +71,7 @@ Cursor/view movement and text editing:
   C-a, <home>      - Move cursor to the beginning of the line
   C-v, <pgdn>      - Move view forward (half of the screen)
   M-v, <pgup>      - Move view backward (half of the screen)
+  C-l              - Center view on line containing cursor
   C-s              - Search forward [interactive prompt]
   C-r              - Search backward [interactive prompt]
   C-j              - Insert a newline character and autoindent
