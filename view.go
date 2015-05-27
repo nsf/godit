@@ -264,10 +264,18 @@ func (v *view) draw_line(line *line, line_num, coff, line_voffset int) {
 
 		if rx >= v.uibuf.Width {
 			last := coff + v.uibuf.Width - 1
-			v.uibuf.Cells[last] = termbox.Cell{
-				Ch: '→',
-				Fg: termbox.ColorDefault,
-				Bg: termbox.ColorDefault,
+			if runtime.GOOS == "windows" {
+				v.uibuf.Cells[last] = termbox.Cell{
+					Ch: '>',
+					Fg: termbox.ColorDefault,
+					Bg: termbox.ColorDefault,
+				}
+			} else {
+				v.uibuf.Cells[last] = termbox.Cell{
+					Ch: '→',
+					Fg: termbox.ColorDefault,
+					Bg: termbox.ColorDefault,
+				}
 			}
 			break
 		}
@@ -321,10 +329,18 @@ func (v *view) draw_line(line *line, line_num, coff, line_voffset int) {
 	}
 
 	if line_voffset != 0 {
-		v.uibuf.Cells[coff] = termbox.Cell{
-			Ch: '←',
-			Fg: termbox.ColorDefault,
-			Bg: termbox.ColorDefault,
+		if runtime.GOOS == "windows" {
+			v.uibuf.Cells[coff] = termbox.Cell{
+				Ch: '<',
+				Fg: termbox.ColorDefault,
+				Bg: termbox.ColorDefault,
+			}
+		} else {
+			v.uibuf.Cells[coff] = termbox.Cell{
+				Ch: '←',
+				Fg: termbox.ColorDefault,
+				Bg: termbox.ColorDefault,
+			}
 		}
 	}
 }
