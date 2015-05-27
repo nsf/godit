@@ -6,6 +6,7 @@ import (
 	"github.com/nsf/termbox-go"
 	"github.com/nsf/tulib"
 	"os"
+	"runtime"
 	"strings"
 	"unicode/utf8"
 )
@@ -373,11 +374,19 @@ func (v *view) draw_status() {
 	lp := tulib.DefaultLabelParams
 	lp.Bg = termbox.AttrReverse
 	lp.Fg = termbox.AttrReverse | termbox.AttrBold
-	v.uibuf.Fill(tulib.Rect{0, v.height(), v.uibuf.Width, 1}, termbox.Cell{
-		Fg: termbox.AttrReverse,
-		Bg: termbox.AttrReverse,
-		Ch: '─',
-	})
+	if runtime.GOOS == "windows" {
+		v.uibuf.Fill(tulib.Rect{0, v.height(), v.uibuf.Width, 1}, termbox.Cell{
+			Fg: termbox.AttrReverse,
+			Bg: termbox.AttrReverse,
+			Ch: '-',
+		})
+	} else {
+		v.uibuf.Fill(tulib.Rect{0, v.height(), v.uibuf.Width, 1}, termbox.Cell{
+			Fg: termbox.AttrReverse,
+			Bg: termbox.AttrReverse,
+			Ch: '─',
+		})
+	}
 
 	// on disk sync status
 	if !v.buf.synced_with_disk() {
