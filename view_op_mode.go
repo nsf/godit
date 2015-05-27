@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/nsf/termbox-go"
 	"github.com/nsf/tulib"
+	"runtime"
 )
 
 //----------------------------------------------------------------------------
@@ -75,11 +76,19 @@ func (v view_op_mode) draw() {
 	hr.X += (r.Width - 1) / 2
 	hr.Width = 1
 	hr.Height = 3
-	g.uibuf.Fill(hr, termbox.Cell{
-		Fg: termbox.ColorWhite,
-		Bg: termbox.ColorRed,
-		Ch: '│',
-	})
+	if runtime.GOOS == "windows" {
+		g.uibuf.Fill(hr, termbox.Cell{
+			Fg: termbox.ColorWhite,
+			Bg: termbox.ColorRed,
+			Ch: '|',
+		})
+	} else {
+		g.uibuf.Fill(hr, termbox.Cell{
+			Fg: termbox.ColorWhite,
+			Bg: termbox.ColorRed,
+			Ch: '│',
+		})
+	}
 
 	x = hr.X
 	y = hr.Y + 1
@@ -94,11 +103,19 @@ func (v view_op_mode) draw() {
 	vr.Y += (r.Height - 1) / 2
 	vr.Height = 1
 	vr.Width = 5
-	g.uibuf.Fill(vr, termbox.Cell{
-		Fg: termbox.ColorWhite,
-		Bg: termbox.ColorRed,
-		Ch: '─',
-	})
+	if runtime.GOOS == "windows" {
+		g.uibuf.Fill(vr, termbox.Cell{
+			Fg: termbox.ColorWhite,
+			Bg: termbox.ColorRed,
+			Ch: '-',
+		})
+	} else {
+		g.uibuf.Fill(vr, termbox.Cell{
+			Fg: termbox.ColorWhite,
+			Bg: termbox.ColorRed,
+			Ch: '─',
+		})
+	}
 
 	x = vr.X + 2
 	y = vr.Y

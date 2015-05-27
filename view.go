@@ -6,6 +6,7 @@ import (
 	"github.com/nsf/termbox-go"
 	"github.com/nsf/tulib"
 	"os"
+	"runtime"
 	"strings"
 	"unicode/utf8"
 )
@@ -263,10 +264,18 @@ func (v *view) draw_line(line *line, line_num, coff, line_voffset int) {
 
 		if rx >= v.uibuf.Width {
 			last := coff + v.uibuf.Width - 1
-			v.uibuf.Cells[last] = termbox.Cell{
-				Ch: '→',
-				Fg: termbox.ColorDefault,
-				Bg: termbox.ColorDefault,
+			if runtime.GOOS == "windows" {
+				v.uibuf.Cells[last] = termbox.Cell{
+					Ch: '>',
+					Fg: termbox.ColorDefault,
+					Bg: termbox.ColorDefault,
+				}
+			} else {
+				v.uibuf.Cells[last] = termbox.Cell{
+					Ch: '→',
+					Fg: termbox.ColorDefault,
+					Bg: termbox.ColorDefault,
+				}
 			}
 			break
 		}
@@ -320,10 +329,18 @@ func (v *view) draw_line(line *line, line_num, coff, line_voffset int) {
 	}
 
 	if line_voffset != 0 {
-		v.uibuf.Cells[coff] = termbox.Cell{
-			Ch: '←',
-			Fg: termbox.ColorDefault,
-			Bg: termbox.ColorDefault,
+		if runtime.GOOS == "windows" {
+			v.uibuf.Cells[coff] = termbox.Cell{
+				Ch: '<',
+				Fg: termbox.ColorDefault,
+				Bg: termbox.ColorDefault,
+			}
+		} else {
+			v.uibuf.Cells[coff] = termbox.Cell{
+				Ch: '←',
+				Fg: termbox.ColorDefault,
+				Bg: termbox.ColorDefault,
+			}
 		}
 	}
 }
@@ -373,11 +390,19 @@ func (v *view) draw_status() {
 	lp := tulib.DefaultLabelParams
 	lp.Bg = termbox.AttrReverse
 	lp.Fg = termbox.AttrReverse | termbox.AttrBold
-	v.uibuf.Fill(tulib.Rect{0, v.height(), v.uibuf.Width, 1}, termbox.Cell{
-		Fg: termbox.AttrReverse,
-		Bg: termbox.AttrReverse,
-		Ch: '─',
-	})
+	if runtime.GOOS == "windows" {
+		v.uibuf.Fill(tulib.Rect{0, v.height(), v.uibuf.Width, 1}, termbox.Cell{
+			Fg: termbox.AttrReverse,
+			Bg: termbox.AttrReverse,
+			Ch: '-',
+		})
+	} else {
+		v.uibuf.Fill(tulib.Rect{0, v.height(), v.uibuf.Width, 1}, termbox.Cell{
+			Fg: termbox.AttrReverse,
+			Bg: termbox.AttrReverse,
+			Ch: '─',
+		})
+	}
 
 	// on disk sync status
 	if !v.buf.synced_with_disk() {
