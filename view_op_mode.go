@@ -78,7 +78,7 @@ func (v view_op_mode) draw() {
 	g.uibuf.Fill(hr, termbox.Cell{
 		Fg: termbox.ColorWhite,
 		Bg: termbox.ColorRed,
-		Ch: '│',
+		Ch: '|',
 	})
 
 	x = hr.X
@@ -97,7 +97,7 @@ func (v view_op_mode) draw() {
 	g.uibuf.Fill(vr, termbox.Cell{
 		Fg: termbox.ColorWhite,
 		Bg: termbox.ColorRed,
-		Ch: '─',
+		Ch: '-',
 	})
 
 	x = vr.X + 2

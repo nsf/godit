@@ -264,7 +264,7 @@ func (v *view) draw_line(line *line, line_num, coff, line_voffset int) {
 		if rx >= v.uibuf.Width {
 			last := coff + v.uibuf.Width - 1
 			v.uibuf.Cells[last] = termbox.Cell{
-				Ch: '→',
+				Ch: '>',
 				Fg: termbox.ColorDefault,
 				Bg: termbox.ColorDefault,
 			}
@@ -321,7 +321,7 @@ func (v *view) draw_line(line *line, line_num, coff, line_voffset int) {
 
 	if line_voffset != 0 {
 		v.uibuf.Cells[coff] = termbox.Cell{
-			Ch: '←',
+			Ch: '<',
 			Fg: termbox.ColorDefault,
 			Bg: termbox.ColorDefault,
 		}
@@ -369,14 +369,14 @@ func (v *view) draw_status() {
 		return
 	}
 
-	// fill background with '─'
+	// fill background with '-'
 	lp := tulib.DefaultLabelParams
 	lp.Bg = termbox.AttrReverse
 	lp.Fg = termbox.AttrReverse | termbox.AttrBold
 	v.uibuf.Fill(tulib.Rect{0, v.height(), v.uibuf.Width, 1}, termbox.Cell{
 		Fg: termbox.AttrReverse,
 		Bg: termbox.AttrReverse,
-		Ch: '─',
+		Ch: '-',
 	})
 
 	// on disk sync status
