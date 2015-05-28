@@ -261,7 +261,7 @@ func (ac *autocompl) draw_onto(buf *tulib.Buffer, x, y int) {
 	dst = find_place_for_rect(buf.Rect, tulib.Rect{x, y + 1, w, h})
 
 	slider_i, slider_r := ac.slider_pos_and_rune(dst.Height)
-	lp := tulib.DefaultLabelParams
+	lp := default_label_params
 
 	r := dst
 	r.Width--

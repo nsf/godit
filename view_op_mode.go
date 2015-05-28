@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/nsf/termbox-go"
-	"github.com/nsf/tulib"
 )
 
 //----------------------------------------------------------------------------
@@ -34,7 +33,7 @@ func (v view_op_mode) draw() {
 		Bg: termbox.ColorDefault,
 		Ch: ' ',
 	})
-	lp := tulib.DefaultLabelParams
+	lp := default_label_params
 	lp.Fg = termbox.ColorYellow
 	g.uibuf.DrawLabel(r, &lp, view_op_mode_name)
 

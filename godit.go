@@ -325,7 +325,7 @@ func (g *godit) draw() {
 }
 
 func (g *godit) draw_status() {
-	lp := tulib.DefaultLabelParams
+	lp := default_label_params
 	r := g.uibuf.Rect
 	r.Y = r.Height - 1
 	r.Height = 1

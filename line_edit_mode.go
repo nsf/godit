@@ -81,7 +81,7 @@ func (l *line_edit_mode) draw() {
 		Bg: termbox.ColorDefault,
 		Ch: ' ',
 	})
-	lp := tulib.DefaultLabelParams
+	lp := default_label_params
 	lp.Fg = termbox.ColorCyan
 	ui.DrawLabel(prompt_r, &lp, l.prompt)
 

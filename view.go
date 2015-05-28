@@ -370,7 +370,7 @@ func (v *view) draw_status() {
 	}
 
 	// fill background with '-'
-	lp := tulib.DefaultLabelParams
+	lp := default_label_params
 	lp.Bg = termbox.AttrReverse
 	lp.Fg = termbox.AttrReverse | termbox.AttrBold
 	v.uibuf.Fill(tulib.Rect{0, v.height(), v.uibuf.Width, 1}, termbox.Cell{
