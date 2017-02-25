@@ -148,10 +148,12 @@ func (e extended_mode) on_key(ev *termbox.Event) {
 			} else {
 				r, _ = v.cursor.rune_under()
 			}
-			g.set_status("Char: %s (dec: %d, oct: %s, hex: %s)",
+			cursor_ex := make_cursor_location_ex(v.cursor)
+			g.set_status("Char: %s (dec: %d, oct: %s, hex: %s), Cursor offset: %d bytes",
 				strconv.QuoteRune(r), r,
 				strconv.FormatInt(int64(r), 8),
-				strconv.FormatInt(int64(r), 16))
+				strconv.FormatInt(int64(r), 16),
+				cursor_ex.abs_boffset)
 		case '!':
 			g.set_overlay_mode(init_line_edit_mode(g, g.filter_region_lemp()))
 			return
