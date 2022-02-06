@@ -1529,11 +1529,11 @@ func (v *view) deindent_line(line cursor_location) {
 	line.boffset = 0
 	if r, _ := line.rune_under(); r == '\t' {
 		v.action_delete(line, 1)
-	}
-	if v.cursor.line == line.line && v.cursor.boffset > 0 {
-		cursor := v.cursor
-		cursor.boffset -= 1
-		v.move_cursor_to(cursor)
+		if v.cursor.line == line.line && v.cursor.boffset > 0 {
+			cursor := v.cursor
+			cursor.boffset -= 1
+			v.move_cursor_to(cursor)
+		}
 	}
 }
 
