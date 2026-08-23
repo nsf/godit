@@ -1,0 +1,30 @@
+name: Release V1
+on:
+  push:
+    tags:
+      - v*
+jobs:
+  tagged-release:
+    name: "Tagged Release"
+    runs-on: "ubuntu-latest"
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: "1.26.5"
+      - name: Checkout Source Code
+        uses: actions/checkout@v2
+      - name: Build Go binary
+        run: |
+          VERSION=$(git describe --tags)
+          FILENAME="godit-$VERSION-linux-amd64"
+          go build
+          strip -s godit
+          mv godit $FILENAME
+          echo "FILENAME=$FILENAME" >> $GITHUB_ENV
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ${{ env.FILENAME }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
